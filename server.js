@@ -22,6 +22,27 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
+// Função para enviar mensagem via Z-API
+async function enviarMensagemZAPI(telefone, mensagem) {
+  const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+  
+  try {
+    const response = await fetch(`${ZAPI_URL}/send-text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: telefone,
+        message: mensagem
+      })
+    });
+    const result = await response.json();
+    console.log('Mensagem enviada via Z-API:', result);
+    return result;
+  } catch (error) {
+    console.error('Erro ao enviar mensagem Z-API:', error);
+  }
+}
+
 // Rota de teste
 app.get('/', (req, res) => {
   res.json({ 
@@ -116,64 +137,58 @@ app.post('/webhook/ticto', async (req, res) => {
   res.json({ status: 'received' });
 });
 
-// Webhook Evolution
-app.post('/webhook/evolution', (req, res) => {
-  console.log('Webhook Evolution recebido:', req.body);
-  res.json({ status: 'received' });
-});
-
-// Função para enviar mensagem via Z-API
-async function enviarMensagemZAPI(telefone, mensagem) {
-  const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
-  
-  try {
-    const response = await fetch(`${ZAPI_URL}/send-text`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phone: telefone,
-        message: mensagem
-      })
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Erro ao enviar mensagem:', error);
-  }
-}
-
-// Webhook Z-API
+// Webhook Z-API - ÚNICO E CORRIGIDO
 app.post('/webhook/evolution', async (req, res) => {
   try {
-    const webhook = req.body;
-
-    console.log('=== WEBHOOK RECEBIDO ===');
-console.log('Event:', webhook.event);
-console.log('FromMe:', webhook.data?.fromMe);
-console.log('IsGroup:', webhook.data?.isGroup);
-console.log('From:', webhook.data?.from);
-console.log('Body:', webhook.data?.body);
-console.log('========================');
+    console.log('=== WEBHOOK Z-API RECEBIDO ===');
+    console.log('Body completo:', JSON.stringify(req.body, null, 2));
     
-    if (webhook.event === 'onMessage' && !webhook.data.fromMe && !webhook.data.isGroup) {
+    const webhook = req.body;
+    
+    console.log('Event:', webhook.event);
+    console.log('FromMe:', webhook.data?.fromMe);
+    console.log('IsGroup:', webhook.data?.isGroup);
+    console.log('From:', webhook.data?.from);
+    console.log('Body:', webhook.data?.body);
+    console.log('===============================');
+    
+    // Verificar se é mensagem recebida
+    if (webhook.event === 'onMessage' && !webhook.data?.fromMe) {
       let telefone = webhook.data.from;
-      if (telefone.length === 13) telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
+      
+      // Ajustar número adicionando 9 se necessário
+      if (telefone && telefone.length === 13 && telefone.startsWith('5562')) {
+        telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
+        console.log('Número ajustado para:', telefone);
+      }
+      
       const mensagem = webhook.data.body;
+      console.log(`Processando mensagem de ${telefone}: ${mensagem}`);
       
       const resposta = `🎯 Recebi sua mensagem: "${mensagem}"
+
+🤖 Em breve vou processar e enviar sua ideia de story!
+
+✨ Bot funcionando perfeitamente! ✨`;
       
-🤖 Em breve vou processar e enviar sua ideia de story!`;
-      
+      console.log('Enviando resposta via Z-API...');
       await enviarMensagemZAPI(telefone, resposta);
+      console.log('Resposta enviada com sucesso!');
+    } else {
+      console.log('Mensagem ignorada - não atende critérios');
     }
     
-    res.status(200).json({ status: 'ok' });
+    res.status(200).json({ status: 'processed' });
   } catch (error) {
+    console.error('Erro no webhook Z-API:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-  console.log('Supabase configurado!');
-  console.log('OpenAI configurado!');
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log('📱 Webhook Z-API: /webhook/evolution');
+  console.log('💰 Webhook Ticto: /webhook/ticto');
+  console.log('✅ Supabase configurado!');
+  console.log('🤖 OpenAI configurado!');
 });
