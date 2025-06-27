@@ -146,7 +146,7 @@ app.post('/webhook/evolution', async (req, res) => {
   try {
     const webhook = req.body;
     
-    if (webhook.event === 'onMessage' && !webhook.data.fromMe) {
+    if (webhook.event === 'onMessage' && !webhook.data.fromMe && !webhook.data.isGroup) {
       const telefone = webhook.data.from;
       const mensagem = webhook.data.body;
       
