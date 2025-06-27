@@ -23,24 +23,36 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Função para enviar mensagem via Z-API (USANDO AXIOS)
+// Função para enviar mensagem via Z-API - COM DEBUG COMPLETO
 async function enviarMensagemZAPI(telefone, mensagem) {
   const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
   
+  console.log('🔧 DEBUG Z-API:');
+  console.log('📱 Telefone:', telefone);
+  console.log('💬 Mensagem:', mensagem);
+  console.log('🔗 URL:', `${ZAPI_URL}/send-text`);
+  
   try {
-    const response = await axios.post(`${ZAPI_URL}/send-text`, {
+    const payload = {
       phone: telefone,
       message: mensagem
-    }, {
+    };
+    
+    console.log('📦 Payload:', JSON.stringify(payload, null, 2));
+    
+    const response = await axios.post(`${ZAPI_URL}/send-text`, payload, {
       headers: {
         'Content-Type': 'application/json'
       }
     });
     
-    console.log('✅ Mensagem enviada via Z-API:', response.data);
+    console.log('✅ Sucesso Z-API:', response.data);
     return response.data;
   } catch (error) {
-    console.error('❌ Erro ao enviar mensagem Z-API:', error.message);
+    console.error('❌ Erro completo Z-API:', error.response?.data || error.message);
+    console.error('❌ Status:', error.response?.status);
+    console.error('❌ Headers response:', error.response?.headers);
+    console.error('❌ URL tentada:', `${ZAPI_URL}/send-text`);
     return null;
   }
 }
@@ -139,7 +151,7 @@ app.post('/webhook/ticto', async (req, res) => {
   res.json({ status: 'received' });
 });
 
-// Webhook Z-API - VERSÃO FINAL QUE FUNCIONA
+// Webhook Z-API - COM DEBUG COMPLETO
 app.post('/webhook/evolution', async (req, res) => {
   try {
     console.log('🔔 === WEBHOOK Z-API RECEBIDO ===');
