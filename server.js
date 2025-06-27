@@ -31,14 +31,14 @@ app.get('/test-db', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('usuarios')
-      .select('count(*)')
-      .single();
+      .select('*');
     
     if (error) throw error;
     
     res.json({ 
       message: 'Banco conectado com sucesso!',
-      usuarios: data || 0
+      total_usuarios: data ? data.length : 0,
+      usuarios: data
     });
   } catch (error) {
     res.status(500).json({ 
