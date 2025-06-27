@@ -145,6 +145,14 @@ async function enviarMensagemZAPI(telefone, mensagem) {
 app.post('/webhook/evolution', async (req, res) => {
   try {
     const webhook = req.body;
+
+    console.log('=== WEBHOOK RECEBIDO ===');
+console.log('Event:', webhook.event);
+console.log('FromMe:', webhook.data?.fromMe);
+console.log('IsGroup:', webhook.data?.isGroup);
+console.log('From:', webhook.data?.from);
+console.log('Body:', webhook.data?.body);
+console.log('========================');
     
     if (webhook.event === 'onMessage' && !webhook.data.fromMe && !webhook.data.isGroup) {
       let telefone = webhook.data.from;
