@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
-const fetch = require('node-fetch');  // ADICIONAR ESTA LINHA
+const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
@@ -23,24 +23,21 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Função para enviar mensagem via Z-API
+// Função para enviar mensagem via Z-API (USANDO AXIOS)
 async function enviarMensagemZAPI(telefone, mensagem) {
   const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
   
   try {
-    const response = await fetch(`${ZAPI_URL}/send-text`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phone: telefone,
-        message: mensagem
-      })
+    const response = await axios.post(`${ZAPI_URL}/send-text`, {
+      phone: telefone,
+      message: mensagem
     });
-    const result = await response.json();
-    console.log('Mensagem enviada via Z-API:', result);
-    return result;
+    
+    console.log('✅ Mensagem enviada via Z-API:', response.data);
+    return response.data;
   } catch (error) {
-    console.error('Erro ao enviar mensagem Z-API:', error);
+    console.error('❌ Erro ao enviar mensagem Z-API:', error.message);
+    return null;
   }
 }
 
@@ -134,81 +131,58 @@ app.post('/test-gpt', async (req, res) => {
 
 // Webhook Ticto
 app.post('/webhook/ticto', async (req, res) => {
-  console.log('Webhook Ticto recebido:', req.body);
+  console.log('💰 Webhook Ticto recebido:', req.body);
   res.json({ status: 'received' });
 });
 
-// Webhook Z-API - ÚNICO E CORRIGIDO
+// Webhook Z-API - VERSÃO FINAL QUE FUNCIONA
 app.post('/webhook/evolution', async (req, res) => {
   try {
-    console.log('=== WEBHOOK Z-API RECEBIDO ===');
-    console.log('Body completo:', JSON.stringify(req.body, null, 2));
+    console.log('🔔 === WEBHOOK Z-API RECEBIDO ===');
+    console.log('📱 Body:', JSON.stringify(req.body, null, 2));
     
     const webhook = req.body;
     
-    // Z-API tem formato diferente!
+    // Verificar se é mensagem recebida (não enviada por nós)
     if (!webhook.fromMe && webhook.phone) {
       let telefone = webhook.phone;
       
-      // Ajustar número adicionando 9 se necessário
-      if (telefone.length === 12) {
+      console.log(`📞 Telefone original: ${telefone}`);
+      
+      // Ajustar número adicionando 9 se necessário (para números de 12 dígitos)
+      if (telefone.length === 12 && telefone.startsWith('5562')) {
         telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
+        console.log(`📞 Telefone ajustado: ${telefone}`);
       }
       
-      const resposta = `🎯 Bot funcionando! 
-
-🤖 Recebi sua mensagem e estou respondendo via Z-API!
-
-✨ Sucesso total! ✨`;
+      const mensagem = webhook.text || webhook.body || 'Mensagem sem texto';
+      console.log(`💬 Mensagem recebida: "${mensagem}"`);
       
-      await enviarMensagemZAPI(telefone, resposta);
-    }
-    
-    res.status(200).json({ status: 'processed' });
-  } catch (error) {
-    console.error('Erro:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-    
-    const webhook = req.body;
-    
-    console.log('Event:', webhook.event);
-    console.log('FromMe:', webhook.data?.fromMe);
-    console.log('IsGroup:', webhook.data?.isGroup);
-    console.log('From:', webhook.data?.from);
-    console.log('Body:', webhook.data?.body);
-    console.log('===============================');
-    
-    // Verificar se é mensagem recebida
-    if (webhook.event === 'onMessage' && !webhook.data?.fromMe) {
-      let telefone = webhook.data.from;
+      const resposta = `🎉 *FUNCIONOU!* 
+
+🤖 Seu Bot Stories está funcionando perfeitamente!
+
+📱 Recebi: "${mensagem}"
+
+✨ Z-API + Railway + Bot = SUCESSO! ✨
+
+🚀 Agora você pode enviar suas ideias que eu vou gerar stories incríveis!`;
       
-      // Ajustar número adicionando 9 se necessário
-      if (telefone && telefone.length === 13 && telefone.startsWith('5562')) {
-        telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
-        console.log('Número ajustado para:', telefone);
+      console.log('📤 Enviando resposta...');
+      const resultado = await enviarMensagemZAPI(telefone, resposta);
+      
+      if (resultado) {
+        console.log('✅ Resposta enviada com SUCESSO!');
+      } else {
+        console.log('❌ Falha ao enviar resposta');
       }
-      
-      const mensagem = webhook.data.body;
-      console.log(`Processando mensagem de ${telefone}: ${mensagem}`);
-      
-      const resposta = `🎯 Recebi sua mensagem: "${mensagem}"
-
-🤖 Em breve vou processar e enviar sua ideia de story!
-
-✨ Bot funcionando perfeitamente! ✨`;
-      
-      console.log('Enviando resposta via Z-API...');
-      await enviarMensagemZAPI(telefone, resposta);
-      console.log('Resposta enviada com sucesso!');
     } else {
-      console.log('Mensagem ignorada - não atende critérios');
+      console.log('🚫 Mensagem ignorada (fromMe ou sem phone)');
     }
     
-    res.status(200).json({ status: 'processed' });
+    res.status(200).json({ status: 'processed', success: true });
   } catch (error) {
-    console.error('Erro no webhook Z-API:', error);
+    console.error('💥 Erro no webhook Z-API:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -219,4 +193,5 @@ app.listen(PORT, () => {
   console.log('💰 Webhook Ticto: /webhook/ticto');
   console.log('✅ Supabase configurado!');
   console.log('🤖 OpenAI configurado!');
+  console.log('🔥 BOT PRONTO PARA FUNCIONAR!');
 });
