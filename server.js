@@ -26,24 +26,23 @@ app.get('/', (req, res) => {
   });
 });
 
-// Teste de conexão com banco
-app.get('/test-db', async (req, res) => {
+// Teste simples do banco
+app.get('/test-simple', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('usuarios')
-      .select('*');
-    
-    if (error) throw error;
+      .select('id')
+      .limit(1);
     
     res.json({ 
-      message: 'Banco conectado com sucesso!',
-      total_usuarios: data ? data.length : 0,
-      usuarios: data
+      message: 'Banco funcionando!',
+      conexao: error ? 'erro' : 'sucesso',
+      erro: error?.message || null
     });
   } catch (error) {
-    res.status(500).json({ 
-      error: 'Erro ao conectar com banco',
-      details: error.message 
+    res.json({ 
+      message: 'Erro capturado',
+      erro: error.message 
     });
   }
 });
