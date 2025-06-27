@@ -155,7 +155,7 @@ app.post('/webhook/evolution', async (req, res) => {
         console.log(`📞 Telefone ajustado: ${telefone}`);
       }
       
-      const mensagem = webhook.text || webhook.body || 'Mensagem sem texto';
+      const mensagem = webhook.text?.message || webhook.body || 'Mensagem sem texto';
       console.log(`💬 Mensagem recebida: "${mensagem}"`);
       
       const resposta = `🎉 *FUNCIONOU!* 
