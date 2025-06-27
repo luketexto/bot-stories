@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
 require('dotenv').config();
 
 const app = express();
@@ -12,6 +13,11 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5iY21xaHlnYmJ3am1qd2FqYWNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEwNDE4MjgsImV4cCI6MjA2NjYxNzgyOH0.ZOObCiyZD-glxXWp08a-0kBve7aJzAIFcfCOd-38h_Y'
 );
 
+// Inicializar OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
 // Middlewares
 app.use(cors());
 app.use(express.json());
@@ -22,7 +28,8 @@ app.get('/', (req, res) => {
     message: 'Bot Stories API funcionando!',
     status: 'online',
     timestamp: new Date().toISOString(),
-    supabase: 'conectado'
+    supabase: 'conectado',
+    openai: 'configurado'
   });
 });
 
@@ -47,6 +54,35 @@ app.get('/test-simple', async (req, res) => {
   }
 });
 
+// Teste OpenAI
+app.post('/test-gpt', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: prompt || "Diga olá em português"
+        }
+      ],
+      max_tokens: 100
+    });
+
+    res.json({
+      message: 'OpenAI funcionando!',
+      resposta: completion.choices[0].message.content,
+      status: 'sucesso'
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro na OpenAI',
+      details: error.message
+    });
+  }
+});
+
 // Webhook Ticto
 app.post('/webhook/ticto', async (req, res) => {
   console.log('Webhook Ticto recebido:', req.body);
@@ -62,6 +98,5 @@ app.post('/webhook/evolution', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
   console.log('Supabase configurado!');
+  console.log('OpenAI configurado!');
 });
-
-// teste
