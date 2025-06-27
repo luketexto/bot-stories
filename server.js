@@ -147,7 +147,8 @@ app.post('/webhook/evolution', async (req, res) => {
     const webhook = req.body;
     
     if (webhook.event === 'onMessage' && !webhook.data.fromMe && !webhook.data.isGroup) {
-      const telefone = webhook.data.from;
+      let telefone = webhook.data.from;
+      if (telefone.length === 13) telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
       const mensagem = webhook.data.body;
       
       const resposta = `🎯 Recebi sua mensagem: "${mensagem}"
