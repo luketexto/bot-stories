@@ -54,6 +54,33 @@ app.get('/test-simple', async (req, res) => {
   }
 });
 
+// Teste OpenAI via GET
+app.get('/test-openai', async (req, res) => {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: "Sou barbeiro e preciso de uma ideia curta para story de sábado manhã"
+        }
+      ],
+      max_tokens: 150
+    });
+
+    res.json({
+      message: 'OpenAI funcionando!',
+      resposta: completion.choices[0].message.content,
+      status: 'sucesso'
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro na OpenAI',
+      details: error.message
+    });
+  }
+});
+
 // Teste OpenAI
 app.post('/test-gpt', async (req, res) => {
   try {
