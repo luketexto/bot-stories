@@ -42,7 +42,8 @@ async function enviarMensagemZAPI(telefone, mensagem) {
     
     const response = await axios.post(`${ZAPI_URL}/send-text`, payload, {
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Client-Token': process.env.ZAPI_TOKEN
       }
     });
     
