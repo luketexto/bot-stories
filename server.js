@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
+const fetch = require('node-fetch');  // ADICIONAR ESTA LINHA
 require('dotenv').config();
 
 const app = express();
