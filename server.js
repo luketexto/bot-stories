@@ -23,7 +23,7 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Função para enviar mensagem via Z-API - COM DEBUG COMPLETO
+// Função para enviar mensagem via Z-API - FORMATO CORRETO Z-API
 async function enviarMensagemZAPI(telefone, mensagem) {
   const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
   
@@ -40,12 +40,7 @@ async function enviarMensagemZAPI(telefone, mensagem) {
     
     console.log('📦 Payload:', JSON.stringify(payload, null, 2));
     
-    const response = await axios.post(`${ZAPI_URL}/send-text`, payload, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Client-Token': process.env.ZAPI_TOKEN
-      }
-    });
+    const response = await axios.post(`${ZAPI_URL}/send-text`, payload);
     
     console.log('✅ Sucesso Z-API:', response.data);
     return response.data;
