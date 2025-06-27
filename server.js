@@ -145,6 +145,33 @@ app.post('/webhook/evolution', async (req, res) => {
     
     const webhook = req.body;
     
+    // Z-API tem formato diferente!
+    if (!webhook.fromMe && webhook.phone) {
+      let telefone = webhook.phone;
+      
+      // Ajustar número adicionando 9 se necessário
+      if (telefone.length === 12) {
+        telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
+      }
+      
+      const resposta = `🎯 Bot funcionando! 
+
+🤖 Recebi sua mensagem e estou respondendo via Z-API!
+
+✨ Sucesso total! ✨`;
+      
+      await enviarMensagemZAPI(telefone, resposta);
+    }
+    
+    res.status(200).json({ status: 'processed' });
+  } catch (error) {
+    console.error('Erro:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+    
+    const webhook = req.body;
+    
     console.log('Event:', webhook.event);
     console.log('FromMe:', webhook.data?.fromMe);
     console.log('IsGroup:', webhook.data?.isGroup);
