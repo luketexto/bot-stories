@@ -122,6 +122,47 @@ app.post('/webhook/evolution', (req, res) => {
   res.json({ status: 'received' });
 });
 
+// Função para enviar mensagem via Z-API
+async function enviarMensagemZAPI(telefone, mensagem) {
+  const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+  
+  try {
+    const response = await fetch(`${ZAPI_URL}/send-text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: telefone,
+        message: mensagem
+      })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Erro ao enviar mensagem:', error);
+  }
+}
+
+// Webhook Z-API
+app.post('/webhook/evolution', async (req, res) => {
+  try {
+    const webhook = req.body;
+    
+    if (webhook.event === 'onMessage' && !webhook.data.fromMe) {
+      const telefone = webhook.data.from;
+      const mensagem = webhook.data.body;
+      
+      const resposta = `🎯 Recebi sua mensagem: "${mensagem}"
+      
+🤖 Em breve vou processar e enviar sua ideia de story!`;
+      
+      await enviarMensagemZAPI(telefone, resposta);
+    }
+    
+    res.status(200).json({ status: 'ok' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
   console.log('Supabase configurado!');
