@@ -147,21 +147,21 @@ app.post('/webhook/ticto', async (req, res) => {
   res.json({ status: 'received' });
 });
 
-// Webhook Z-API - COM DEBUG COMPLETO
-app.post('/webhook/evolution', async (req, res) => {
+// Webhook Z-API - FORMATO CORRETO PARA Z-API
+app.post('/webhook/zapi', async (req, res) => {
   try {
     console.log('🔔 === WEBHOOK Z-API RECEBIDO ===');
     console.log('📱 Body:', JSON.stringify(req.body, null, 2));
     
     const webhook = req.body;
     
-    // Verificar se é mensagem recebida (não enviada por nós)
+    // Z-API formato: verificar se é mensagem recebida
     if (!webhook.fromMe && webhook.phone) {
       let telefone = webhook.phone;
       
       console.log(`📞 Telefone original: ${telefone}`);
       
-      // Ajustar número adicionando 9 se necessário (para números de 12 dígitos)
+      // Ajustar número adicionando 9 se necessário
       if (telefone.length === 12 && telefone.startsWith('5562')) {
         telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
         console.log(`📞 Telefone ajustado: ${telefone}`);
@@ -170,31 +170,35 @@ app.post('/webhook/evolution', async (req, res) => {
       const mensagem = webhook.text?.message || webhook.body || 'Mensagem sem texto';
       console.log(`💬 Mensagem recebida: "${mensagem}"`);
       
-      const resposta = `🎉 *FUNCIONOU!* 
+      // RESPOSTA SIMPLES PARA TESTE
+      const resposta = `✅ Bot funcionando!
 
-🤖 Seu Bot Stories está funcionando perfeitamente!
+Recebi: "${mensagem}"
 
-📱 Recebi: "${mensagem}"
-
-✨ Z-API + Railway + Bot = SUCESSO! ✨
-
-🚀 Agora você pode enviar suas ideias que eu vou gerar stories incríveis!`;
+🚀 Agora vou criar stories incríveis para você!`;
       
-      console.log('📤 Enviando resposta...');
-      const resultado = await enviarMensagemZAPI(telefone, resposta);
+      console.log('📤 Enviando resposta via Z-API...');
       
-      if (resultado) {
-        console.log('✅ Resposta enviada com SUCESSO!');
-      } else {
-        console.log('❌ Falha ao enviar resposta');
+      // Enviar resposta usando AXIOS direto (sem função separada por enquanto)
+      const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+      
+      try {
+        const response = await axios.post(`${ZAPI_URL}/send-text`, {
+          phone: telefone,
+          message: resposta
+        });
+        
+        console.log('✅ SUCESSO! Mensagem enviada:', response.data);
+      } catch (apiError) {
+        console.error('❌ Erro Z-API:', apiError.response?.data || apiError.message);
       }
     } else {
       console.log('🚫 Mensagem ignorada (fromMe ou sem phone)');
     }
     
-    res.status(200).json({ status: 'processed', success: true });
+    res.status(200).json({ status: 'processed' });
   } catch (error) {
-    console.error('💥 Erro no webhook Z-API:', error);
+    console.error('💥 Erro geral:', error);
     res.status(500).json({ error: error.message });
   }
 });
