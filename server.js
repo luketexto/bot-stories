@@ -23,42 +23,36 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Função para processar áudio com Whisper - COM DEBUG COMPLETO
+// Função para processar áudio com Whisper - VERSÃO CORRIGIDA
 async function processarAudio(audioUrl) {
   try {
     console.log('🎵 Baixando áudio:', audioUrl);
     console.log('🕐 Início download:', new Date().toISOString());
     
-    // Baixar o áudio com timeout
+    // Baixar o áudio como buffer
     const audioResponse = await axios.get(audioUrl, {
       responseType: 'arraybuffer',
-      timeout: 10000, // 10 segundos timeout
-      maxContentLength: 50 * 1024 * 1024 // 50MB máximo
+      timeout: 10000
     });
     
     console.log('✅ Áudio baixado!');
     console.log('📊 Tamanho do arquivo:', audioResponse.data.byteLength, 'bytes');
-    console.log('📊 Headers:', audioResponse.headers);
     console.log('🕐 Fim download:', new Date().toISOString());
-    
-    // Verificar se o arquivo não está muito grande
-    if (audioResponse.data.byteLength > 25 * 1024 * 1024) { // 25MB
-      console.log('❌ Arquivo muito grande para processar');
-      return 'Arquivo de áudio muito grande. Tente um áudio mais curto.';
-    }
     
     console.log('🎵 Enviando para OpenAI Whisper...');
     console.log('🕐 Início Whisper:', new Date().toISOString());
     
-    // Converter arraybuffer para buffer
-    const audioBuffer = Buffer.from(audioResponse.data);
-    console.log('📊 Buffer criado, tamanho:', audioBuffer.length, 'bytes');
+    // Converter para File usando fs
+    const fs = require('fs');
+    const path = require('path');
+    const tempPath = path.join('/tmp', `audio_${Date.now()}.ogg`);
     
-    // Criar stream do buffer
-    const { Readable } = require('stream');
-    const audioStream = new Readable();
-    audioStream.push(audioBuffer);
-    audioStream.push(null); // fim do stream
+    // Salvar temporariamente
+    fs.writeFileSync(tempPath, Buffer.from(audioResponse.data));
+    console.log('📁 Arquivo salvo em:', tempPath);
+    
+    // Criar ReadStream para OpenAI
+    const audioStream = fs.createReadStream(tempPath);
     
     // Converter para texto usando OpenAI Whisper
     const transcription = await openai.audio.transcriptions.create({
@@ -66,6 +60,10 @@ async function processarAudio(audioUrl) {
       model: 'whisper-1',
       language: 'pt'
     });
+    
+    // Limpar arquivo temporário
+    fs.unlinkSync(tempPath);
+    console.log('🗑️ Arquivo temporário removido');
     
     console.log('🕐 Fim Whisper:', new Date().toISOString());
     console.log('✅ Texto transcrito:', transcription.text);
@@ -75,8 +73,7 @@ async function processarAudio(audioUrl) {
     console.error('❌ Erro detalhado:', {
       message: error.message,
       code: error.code,
-      status: error.status,
-      stack: error.stack?.substring(0, 500)
+      status: error.status
     });
     return null;
   }
