@@ -77,12 +77,26 @@ async function salvarUsuario(telefone, nome, profissao, especialidade) {
 function extrairDadosCompletos(mensagem) {
   console.log('🔍 Tentando extrair dados de:', mensagem);
   
-  // Buscar padrões mais simples - só nome inicialmente
-  const regexNome = /(?:me chamo|meu nome é|sou |eu sou )?([A-Za-zÀ-ÿ\s]{2,30})(?:,|\.|\s|$)/i;
+  // Buscar padrões mais específicos para nome
+  const regexNomeCompleto = /(?:me chamo|meu nome é|sou )?([A-Za-zÀ-ÿ\s]{2,20})(?:\s+e\s+sou|\s+sou|\s*,)/i;
+  const matchCompleto = mensagem.match(regexNomeCompleto);
+  
+  if (matchCompleto) {
+    console.log('✅ Nome e profissão encontrados:', matchCompleto[1]);
+    return {
+      nome: matchCompleto[1].trim(),
+      temNome: true,
+      temProfissao: true,
+      profissao: mensagem.replace(regexNomeCompleto, '').replace(/sou\s*/i, '').trim()
+    };
+  }
+  
+  // Buscar só nome simples
+  const regexNome = /(?:me chamo|meu nome é|sou |eu sou )?([A-Za-zÀ-ÿ]{2,20})(?:\s|$|,|\.)/i;
   const matchNome = mensagem.match(regexNome);
   
-  if (matchNome) {
-    console.log('✅ Nome encontrado:', matchNome[1]);
+  if (matchNome && !mensagem.toLowerCase().includes('sou') && !mensagem.toLowerCase().includes('trabalho')) {
+    console.log('✅ Só nome encontrado:', matchNome[1]);
     return {
       nome: matchNome[1].trim(),
       temNome: true
@@ -99,8 +113,9 @@ async function processarConversaEtapas(telefone, mensagem) {
   
   // Buscar usuário
   let usuario = await buscarUsuario(telefone);
+  console.log('👤 Usuário encontrado:', usuario ? `${usuario.nome} (status: ${usuario.status})` : 'Nenhum');
   
-  if (usuario && usuario.nome && usuario.profissao && usuario.especialidade) {
+  if (usuario && usuario.nome && usuario.profissao && usuario.especialidade && usuario.status === 'ativo') {
     console.log(`👋 Usuário completo: ${usuario.nome}`);
     
     // Usuário completo - pode querer mudar especialidade
@@ -131,15 +146,39 @@ Só me falar o que tá sentindo hoje! 🚀`;
   }
   
   if (!usuario) {
-    // Usuário novo - pedir nome
+    // Usuário novo - tentar extrair dados ou pedir nome
     const dadosExtraidos = extrairDadosCompletos(mensagem);
     
+    if (dadosExtraidos.temNome && dadosExtraidos.temProfissao) {
+      // Tem nome E profissão na mesma mensagem
+      const novoUsuario = await supabase.from('usuarios').insert({
+        telefone: telefone,
+        nome: dadosExtraidos.nome,
+        profissao: dadosExtraidos.profissao,
+        status: 'aguardando_especialidade',
+        created_at: new Date()
+      }).select().single();
+      
+      return `Legal, ${dadosExtraidos.nome}! 👏
+
+Então você trabalha como **${dadosExtraidos.profissao}**!
+
+🎯 *Última pergunta:* Qual sua especialidade?
+
+Exemplos:
+🗣️ "Motor"
+🗣️ "Freios e suspensão"
+🗣️ "Elétrica automotiva"
+
+Fale do seu jeito! 🎤`;
+    }
+    
     if (dadosExtraidos.temNome) {
-      // Encontrou nome, salvar e pedir profissão
+      // Só tem nome
       await supabase.from('usuarios').insert({
         telefone: telefone,
         nome: dadosExtraidos.nome,
-        status: 'incomplete',
+        status: 'aguardando_profissao',
         created_at: new Date()
       });
       
@@ -168,7 +207,10 @@ Pode mandar por áudio ou texto! 😊`;
   if (usuario && usuario.nome && !usuario.profissao) {
     // Tem nome, falta profissão
     await supabase.from('usuarios')
-      .update({ profissao: mensagem.trim() })
+      .update({ 
+        profissao: mensagem.trim(),
+        status: 'aguardando_especialidade'
+      })
       .eq('telefone', telefone);
     
     return `Legal, ${usuario.nome}! 👏
