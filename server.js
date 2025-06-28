@@ -186,6 +186,10 @@ Recebi: "${mensagem}"
         const response = await axios.post(`${ZAPI_URL}/send-text`, {
           phone: telefone,
           message: resposta
+        }, {
+          headers: {
+            'Client-Token': process.env.ZAPI_CLIENT_TOKEN
+          }
         });
         
         console.log('✅ SUCESSO! Mensagem enviada:', response.data);
