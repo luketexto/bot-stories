@@ -121,7 +121,8 @@ async function processarConversaEtapas(telefone, mensagem) {
 
 Para usar o Luke Stories, você precisa adquirir o acesso primeiro.
 
-💳 *Faça seu pagamento em:* [LINK DO CHECKOUT TICTO]
+💳 *Faça seu pagamento em:* 
+https://payment.ticto.app/O6D37000C
 
 Após o pagamento, você receberá acesso imediato! ✨`;
   }
@@ -548,16 +549,54 @@ app.post('/test-gpt', async (req, res) => {
   }
 });
 
-// Webhook Ticto - INTEGRAÇÃO COM PAGAMENTO
+// Webhook Ticto - INTEGRAÇÃO COM PAGAMENTO E SEGURANÇA
 app.post('/webhook/ticto', async (req, res) => {
   try {
     console.log('💰 Webhook Ticto recebido:', req.body);
     
-    const { telefone, email, nome, valor } = req.body;
+    // VALIDAR TOKEN DE SEGURANÇA TICTO
+    const tokenRecebido = req.headers['x-ticto-token'] || req.body.token || req.headers.authorization;
+    const tokenEsperado = 'r8DC0BxIsRI2R22zaDcMheURjgzhKXhcRjpa74Lugt39ftl2vir5qtMLwN5zM286B4ApVfYNFHrPylcnSylY7JF9VLF2WJbOvwp4';
+    
+    if (!tokenRecebido || tokenRecebido !== tokenEsperado) {
+      console.error('❌ Token inválido ou não fornecido');
+      console.error('Token recebido:', tokenRecebido);
+      return res.status(401).json({ error: 'Token de autenticação inválido' });
+    }
+    
+    console.log('✅ Token Ticto validado com sucesso');
+    
+    const { email, nome, valor, status, customer, phone } = req.body;
+    
+    // Extrair telefone do formato da Ticto
+    let telefone = null;
+    
+    if (req.body.telefone) {
+      // Formato direto
+      telefone = req.body.telefone;
+    } else if (phone && phone.number) {
+      // Formato da Ticto: phone: { ddd: "999", ddi: "+55", number: "99568246" }
+      telefone = `55${phone.ddd}${phone.number}`;
+    } else if (customer && customer.phone) {
+      // Outro formato possível
+      telefone = customer.phone;
+    }
+    
+    console.log('📞 Telefone extraído:', telefone);
     
     if (!telefone) {
-      console.error('❌ Telefone não fornecido no webhook Ticto');
+      console.error('❌ Telefone não encontrado no webhook Ticto');
+      console.error('Dados recebidos:', JSON.stringify(req.body, null, 2));
       return res.status(400).json({ error: 'Telefone obrigatório' });
+    }
+    
+    // Verificar se o pagamento foi aprovado
+    if (status !== 'approved' && status !== 'paid') {
+      console.log(`⏳ Pagamento pendente ou rejeitado. Status: ${status}`);
+      return res.status(200).json({ 
+        status: 'received',
+        message: 'Aguardando confirmação do pagamento'
+      });
     }
     
     // Ajustar número se necessário
@@ -566,7 +605,8 @@ app.post('/webhook/ticto', async (req, res) => {
       telefoneAjustado = telefone.substr(0, 4) + '9' + telefone.substr(4);
     }
     
-    console.log(`💳 Pagamento aprovado para: ${telefoneAjustado}`);
+    console.log(`💳 Pagamento APROVADO para: ${telefoneAjustado}`);
+    console.log(`💰 Valor: R$ ${valor}`);
     
     // Verificar se usuário já existe
     let usuario = await buscarUsuario(telefoneAjustado);
@@ -576,9 +616,14 @@ app.post('/webhook/ticto', async (req, res) => {
       await supabase.from('usuarios')
         .update({ 
           status: 'pago',
-          data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 dias
+          email: email,
+          data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
+          data_pagamento: new Date(),
+          valor_pago: valor
         })
         .eq('telefone', telefoneAjustado);
+      
+      console.log('✅ Usuário existente atualizado para status PAGO');
     } else {
       // Usuário novo - criar no banco
       await supabase.from('usuarios').insert({
@@ -586,8 +631,12 @@ app.post('/webhook/ticto', async (req, res) => {
         email: email,
         status: 'pago',
         created_at: new Date(),
-        data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 dias
+        data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
+        data_pagamento: new Date(),
+        valor_pago: valor
       });
+      
+      console.log('✅ Novo usuário criado com status PAGO');
     }
     
     // Enviar mensagem de boas-vindas
