@@ -23,7 +23,37 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Função para enviar mensagem via Z-API - FORMATO CORRETO Z-API
+// Função para processar áudio com Whisper
+async function processarAudio(audioUrl) {
+  try {
+    console.log('🎵 Baixando áudio:', audioUrl);
+    
+    // Baixar o áudio
+    const audioResponse = await axios.get(audioUrl, {
+      responseType: 'arraybuffer'
+    });
+    
+    console.log('🎵 Áudio baixado, convertendo para texto...');
+    
+    // Converter para texto usando OpenAI Whisper
+    const formData = new FormData();
+    formData.append('file', new Blob([audioResponse.data], { type: 'audio/ogg' }), 'audio.ogg');
+    formData.append('model', 'whisper-1');
+    formData.append('language', 'pt');
+    
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioResponse.data,
+      model: 'whisper-1',
+      language: 'pt'
+    });
+    
+    console.log('✅ Texto transcrito:', transcription.text);
+    return transcription.text;
+  } catch (error) {
+    console.error('❌ Erro ao processar áudio:', error);
+    return null;
+  }
+}
 async function enviarMensagemZAPI(telefone, mensagem) {
   const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
   
@@ -167,7 +197,25 @@ app.post('/webhook/zapi', async (req, res) => {
         console.log(`📞 Telefone ajustado: ${telefone}`);
       }
       
-      const mensagem = webhook.text?.message || webhook.body || 'Mensagem sem texto';
+    // Verificar se é áudio ou texto
+    if (webhook.audio?.audioUrl) {
+      console.log('🎵 ÁUDIO RECEBIDO!');
+      console.log('🎵 URL:', webhook.audio.audioUrl);
+      console.log('🎵 Duração:', webhook.audio.seconds, 'segundos');
+      
+      // Processar áudio para texto
+      const textoTranscrito = await processarAudio(webhook.audio.audioUrl);
+      
+      if (textoTranscrito) {
+        mensagem = textoTranscrito;
+        console.log(`💬 Áudio transcrito: "${mensagem}"`);
+      } else {
+        mensagem = 'Não consegui entender o áudio. Pode digitar ou mandar outro áudio?';
+        console.log('❌ Falha na transcrição');
+      }
+    } else {
+      mensagem = webhook.text?.message || 'Mensagem sem texto';
+    }
       console.log(`💬 Mensagem recebida: "${mensagem}"`);
       
       // RESPOSTA SIMPLES PARA TESTE
