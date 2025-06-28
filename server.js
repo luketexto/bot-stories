@@ -250,7 +250,7 @@ async function processarConversa(telefone, mensagem) {
   try {
     // Buscar usuário no banco de dados
     const { data: usuario, error } = await supabase
-      .from('usuarios_bot')
+      .from('usuarios')
       .select('*')
       .eq('telefone', telefone)
       .single();
@@ -284,7 +284,7 @@ async function primeiraInteracao(telefone, mensagem) {
   if (dadosCompletos.nome && dadosCompletos.profissao && dadosCompletos.especialidade) {
     // Usuário mandou tudo de uma vez!
     const { data, error } = await supabase
-      .from('usuarios_bot')
+      .from('usuarios')
       .insert({
         telefone: telefone,
         nome: dadosCompletos.nome,
@@ -324,7 +324,7 @@ Pode falar qual vibe quer! 😊`;
   if (dadosParciais.nome && dadosParciais.profissao) {
     // Conseguiu nome e profissão, falta especialidade
     await supabase
-      .from('usuarios_bot')
+      .from('usuarios')
       .insert({
         telefone: telefone,
         nome: dadosParciais.nome,
@@ -364,7 +364,7 @@ async function completarPerfil(telefone, mensagem, usuario) {
     const especialidade = mensagem.trim();
     
     await supabase
-      .from('usuarios_bot')
+      .from('usuarios')
       .update({ especialidade: especialidade })
       .eq('telefone', telefone);
 
@@ -405,12 +405,12 @@ async function interacaoNormal(telefone, mensagem, usuario) {
 
   // Salvar interação no histórico
   await supabase
-    .from('interacoes_bot')
+    .from('conversas')
     .insert({
       telefone: telefone,
       usuario_id: usuario.id,
       mensagem_usuario: mensagem,
-      tipo_story: tipoStory,
+      tipo_message: tipoStory,
       resposta_bot: storyPersonalizado,
       created_at: new Date()
     });
