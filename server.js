@@ -23,29 +23,61 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Função para processar áudio com Whisper
+// Função para processar áudio com Whisper - COM DEBUG COMPLETO
 async function processarAudio(audioUrl) {
   try {
     console.log('🎵 Baixando áudio:', audioUrl);
+    console.log('🕐 Início download:', new Date().toISOString());
     
-    // Baixar o áudio
+    // Baixar o áudio com timeout
     const audioResponse = await axios.get(audioUrl, {
-      responseType: 'stream'
+      responseType: 'arraybuffer',
+      timeout: 10000, // 10 segundos timeout
+      maxContentLength: 50 * 1024 * 1024 // 50MB máximo
     });
     
-    console.log('🎵 Áudio baixado, convertendo para texto...');
+    console.log('✅ Áudio baixado!');
+    console.log('📊 Tamanho do arquivo:', audioResponse.data.byteLength, 'bytes');
+    console.log('📊 Headers:', audioResponse.headers);
+    console.log('🕐 Fim download:', new Date().toISOString());
+    
+    // Verificar se o arquivo não está muito grande
+    if (audioResponse.data.byteLength > 25 * 1024 * 1024) { // 25MB
+      console.log('❌ Arquivo muito grande para processar');
+      return 'Arquivo de áudio muito grande. Tente um áudio mais curto.';
+    }
+    
+    console.log('🎵 Enviando para OpenAI Whisper...');
+    console.log('🕐 Início Whisper:', new Date().toISOString());
+    
+    // Converter arraybuffer para buffer
+    const audioBuffer = Buffer.from(audioResponse.data);
+    console.log('📊 Buffer criado, tamanho:', audioBuffer.length, 'bytes');
+    
+    // Criar stream do buffer
+    const { Readable } = require('stream');
+    const audioStream = new Readable();
+    audioStream.push(audioBuffer);
+    audioStream.push(null); // fim do stream
     
     // Converter para texto usando OpenAI Whisper
     const transcription = await openai.audio.transcriptions.create({
-      file: audioResponse.data,
+      file: audioStream,
       model: 'whisper-1',
       language: 'pt'
     });
     
+    console.log('🕐 Fim Whisper:', new Date().toISOString());
     console.log('✅ Texto transcrito:', transcription.text);
     return transcription.text;
   } catch (error) {
-    console.error('❌ Erro ao processar áudio:', error.message);
+    console.log('🕐 Erro em:', new Date().toISOString());
+    console.error('❌ Erro detalhado:', {
+      message: error.message,
+      code: error.code,
+      status: error.status,
+      stack: error.stack?.substring(0, 500)
+    });
     return null;
   }
 }
