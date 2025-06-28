@@ -207,7 +207,7 @@ Recebi: "${mensagem}"
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log('📱 Webhook Z-API: /webhook/evolution');
+  console.log('📱 Webhook Z-API: /webhook/zapi');
   console.log('💰 Webhook Ticto: /webhook/ticto');
   console.log('✅ Supabase configurado!');
   console.log('🤖 OpenAI configurado!');
