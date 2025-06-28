@@ -23,6 +23,105 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
+// Função para buscar usuário no banco
+async function buscarUsuario(telefone) {
+  try {
+    const { data: usuario, error } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('telefone', telefone)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      console.error('❌ Erro ao buscar usuário:', error);
+      return null;
+    }
+    
+    return usuario;
+  } catch (error) {
+    console.error('❌ Erro ao buscar usuário:', error);
+    return null;
+  }
+}
+
+// Função para salvar usuário no banco
+async function salvarUsuario(telefone, nome, profissao, especialidade) {
+  try {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .insert({
+        telefone: telefone,
+        nome: nome,
+        profissao: profissao,
+        especialidade: especialidade,
+        status: 'ativo',
+        created_at: new Date()
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Erro ao salvar usuário:', error);
+      return null;
+    }
+    
+    console.log('✅ Usuário salvo:', data);
+    return data;
+  } catch (error) {
+    console.error('❌ Erro ao salvar usuário:', error);
+    return null;
+  }
+}
+
+// Função para extrair dados completos de uma mensagem
+function extrairDadosCompletos(mensagem) {
+  // Regex para capturar nome, profissão e especialidade
+  const regexCompleto = /(?:me chamo|meu nome é|sou )?([A-Za-zÀ-ÿ\s]+?)(?:,|\s)?\s*(?:sou |trabalho como |atuo como )?(barbeiro|dentista|cabeleireira?|mecânico|nutricionista|esteticista|manicure|personal trainer|advogado|médico|enfermeira?|professor|vendedor|lojista|empresário|coach|psicólogo|fisioterapeuta|veterinário|contador|engenheiro|arquiteto|designer|fotógrafo|chef|confeiteiro|padeiro|eletricista|encanador|pedreiro|pintor|jardineiro|faxineira|diarista|motorista|entregador|corretor|consultor).*?(?:especialidade|especialista|especializo|trabalho com|foco em|área|nicho)\s*(?:é|em|:)?\s*([A-Za-zÀ-ÿ\s]+)/i;
+
+  const match = mensagem.match(regexCompleto);
+  
+  if (match) {
+    return {
+      nome: match[1].trim(),
+      profissao: match[2].trim(),
+      especialidade: match[3].trim()
+    };
+  }
+
+  // Tentar só nome e profissão
+  const regexSimples = /(?:me chamo|meu nome é|sou )?([A-Za-zÀ-ÿ\s]+?)(?:,|\s)?\s*(?:sou |trabalho como |atuo como )?(barbeiro|dentista|cabeleireira?|mecânico|nutricionista|esteticista|manicure|personal trainer|advogado|médico|enfermeira?|professor|vendedor|lojista|empresário|coach|psicólogo|fisioterapeuta|veterinário|contador|engenheiro|arquiteto|designer|fotógrafo|chef|confeiteiro|padeiro|eletricista|encanador|pedreiro|pintor|jardineiro|faxineira|diarista|motorista|entregador|corretor|consultor)/i;
+
+  const matchSimples = mensagem.match(regexSimples);
+  
+  if (matchSimples) {
+    return {
+      nome: matchSimples[1].trim(),
+      profissao: matchSimples[2].trim(),
+      especialidade: null
+    };
+  }
+
+  return {};
+}
+
+// Função para obter exemplos de especialidade por profissão
+function getExemplosEspecialidade(profissao) {
+  const exemplos = {
+    'barbeiro': 'fade, barba, cortes clássicos, degradê, bigode',
+    'dentista': 'ortodontia, implantes, clareamento, estética dental',
+    'cabeleireira': 'cortes femininos, coloração, escova, cachos, alisamento',
+    'nutricionista': 'emagrecimento, esportiva, infantil, gestante, vegana',
+    'esteticista': 'limpeza de pele, massagem, depilação, drenagem, peeling',
+    'mecânico': 'motor, freios, suspensão, elétrica, geral',
+    'manicure': 'unhas decoradas, pedicure, alongamento, nail art',
+    'personal trainer': 'musculação, funcional, emagrecimento, idosos',
+    'médico': 'clínica geral, cardiologia, pediatria, ginecologia',
+    'advogado': 'civil, criminal, trabalhista, família, empresarial'
+  };
+  
+  return exemplos[profissao.toLowerCase()] || 'sua área principal de atuação';
+}
+
 // Função para processar áudio com Whisper
 async function processarAudio(audioUrl) {
   try {
@@ -167,7 +266,7 @@ app.post('/webhook/ticto', async (req, res) => {
   res.json({ status: 'received' });
 });
 
-// Webhook Z-API - VERSÃO CORRIGIDA
+// Webhook Z-API - VERSÃO COM MEMÓRIA INTELIGENTE
 app.post('/webhook/zapi', async (req, res) => {
   try {
     console.log('🔔 === WEBHOOK Z-API RECEBIDO ===');
@@ -212,14 +311,88 @@ app.post('/webhook/zapi', async (req, res) => {
 
       console.log(`💬 Mensagem recebida: "${mensagem}"`);
       
-      // RESPOSTA SIMPLES QUE FUNCIONA
-      resposta = `🎬 *Oi! Seu Bot de Stories está funcionando!*
+      // SISTEMA DE MEMÓRIA INTELIGENTE
+      console.log('🧠 Verificando se usuário existe...');
+      let usuario = await buscarUsuario(telefone);
+      
+      if (usuario) {
+        console.log(`👋 Usuário encontrado: ${usuario.nome} (${usuario.profissao})`);
+        
+        // Usuário conhecido - resposta personalizada rápida
+        resposta = `Oi ${usuario.nome}! 😊
 
-📱 Recebi: "${mensagem}"
+Como ${usuario.profissao}${usuario.especialidade ? ` especialista em ${usuario.especialidade}` : ''}, que tipo de story quer hoje?
 
-🚀 Em breve vou criar stories personalizados para você com base na sua profissão e especialidade!
+• 😄 **Humorado** - algo divertido
+• 📚 **Dica profissional** - compartilhar conhecimento  
+• 💪 **Motivacional** - inspirar seguidores
+• 🎯 **Promocional** - divulgar serviços
+• ✨ **Criativo** - algo diferenciado
 
-✨ Por enquanto estou em modo de teste! ✨`;
+Só me falar o que tá sentindo hoje! 🚀`;
+
+      } else {
+        console.log('🆕 Usuário novo, tentando extrair dados...');
+        
+        // Tentar extrair dados da mensagem
+        const dadosExtraidos = extrairDadosCompletos(mensagem);
+        
+        if (dadosExtraidos.nome && dadosExtraidos.profissao) {
+          console.log('✅ Dados extraídos:', dadosExtraidos);
+          
+          // Salvar usuário
+          usuario = await salvarUsuario(
+            telefone, 
+            dadosExtraidos.nome, 
+            dadosExtraidos.profissao, 
+            dadosExtraidos.especialidade
+          );
+          
+          if (dadosExtraidos.especialidade) {
+            // Tem tudo - resposta completa
+            resposta = `🎉 *Perfeito, ${dadosExtraidos.nome}!*
+
+Salvei suas informações:
+👤 **Nome:** ${dadosExtraidos.nome}
+💼 **Profissão:** ${dadosExtraidos.profissao}
+🎯 **Especialidade:** ${dadosExtraidos.especialidade}
+
+🚀 *Agora vamos criar seu story!*
+
+Que tipo de conteúdo quer hoje?
+• 😄 **Humorado** • 📚 **Dica profissional** 
+• 💪 **Motivacional** • 🎯 **Promocional** • ✨ **Criativo**
+
+Pode falar qual vibe quer! 😊`;
+          } else {
+            // Falta especialidade
+            resposta = `Oi ${dadosExtraidos.nome}! 😊
+
+Legal que você é ${dadosExtraidos.profissao}! 👏
+
+🎯 *Só preciso saber:* Qual sua especialidade?
+
+Exemplos para ${dadosExtraidos.profissao}:
+${getExemplosEspecialidade(dadosExtraidos.profissao)}
+
+Pode mandar por áudio ou texto! 🎤`;
+          }
+        } else {
+          // Não conseguiu extrair - pedir informações
+          resposta = `👋 *Olá! Sou seu Bot de Stories!*
+
+Para criar conteúdo personalizado, me diga:
+
+🎯 *SEU NOME, PROFISSÃO E ESPECIALIDADE*
+
+Exemplos:
+🗣️ "Sabrina, nutricionista, especialidade emagrecimento"
+🗣️ "João, barbeiro, especialista em fade"
+🗣️ "Maria, dentista, trabalho com ortodontia"
+
+Pode mandar por áudio ou texto! 😊`;
+        }
+      }
       
       console.log('✅ Resposta preparada, enviando...');
       console.log('📤 Enviando resposta via Z-API...');
