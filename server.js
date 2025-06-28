@@ -165,10 +165,10 @@ Ex: "Meu nome agora é...", "Mudei de especialidade para...", etc.`;
 🎯 *Agora me conte:*
 Qual sua **profissão e especialidade**?
 
-Exemplos:
-🗣️ "Sou barbeiro, especialista em fade"
-🗣️ "Dentista, trabalho com implantes"
-🗣️ "Nutricionista focada em emagrecimento"
+💡 *Pode ser qualquer área:*
+🗣️ "Sou [sua profissão], especialista em [especialidade]"
+🗣️ "Trabalho como [profissão] focado em [área]"
+🗣️ "Atuo na área de [sua profissão]"
 
 Pode falar do seu jeito! 💬`;
     }
@@ -226,55 +226,83 @@ Agora tenho tudo que preciso:
 
 🚀 *AGORA ESTAMOS PRONTOS!*
 
-Me mande suas solicitações como:
-💬 "Preciso de um texto animado para gravar em casa"
-💬 "Estou no consultório, quero uma dica sobre [assunto]"
-💬 "Quero algo promocional para meus serviços"
+💬 *Como usar:*
+📱 "Preciso de um texto animado para gravar em casa"
+🛍️ "Estou no consultório, quero uma dica sobre [assunto]"
+🎯 "Quero algo promocional para meus serviços"
 
-*Pode mandar por áudio!* 🎤`;
+*Pode mandar por áudio!* 🎤
+
+✨ *Vamos começar? Me mande sua primeira solicitação!* ✨`;
   }
   
   return "Algo deu errado, pode tentar novamente?";
 }
 
-// Função para extrair nome de forma simples
+// FUNÇÃO CORRIGIDA - Extrair nome sem confundir com profissão
 function extrairNome(mensagem) {
-  // Padrões comuns para nomes
+  console.log('🔍 Extraindo nome de:', mensagem);
+  
+  // Se mensagem começa com padrões de profissão, NÃO extrair nome
+  const padroesProfissao = [
+    /^sou\s+[a-zA-ZÀ-ÿ]+/i,
+    /^trabalho\s+(como|com|de)/i,
+    /^atuo\s+(como|na|no)/i,
+    /^formado\s+em/i,
+    /especialista\s+em/i,
+    /^minha\s+profissão/i,
+    /^área\s+de/i
+  ];
+  
+  // Verificar se é profissão
+  const eProfissao = padroesProfissao.some(padrao => padrao.test(mensagem));
+  if (eProfissao) {
+    console.log('❌ Detectado como profissão, não extraindo nome');
+    return null;
+  }
+  
+  // Padrões para nomes (sua lógica original mantida)
   const padroes = [
-    /(?:me chamo|meu nome é|sou |eu sou )?([A-Za-zÀ-ÿ]{2,20})(?:\s|$|,|\.)/i,
-    /^([A-Za-zÀ-ÿ]{2,20})$/i // Nome sozinho
+    /(?:me chamo|meu nome é|sou |eu sou )\s*([A-Za-zÀ-ÿ\s]{2,30})$/i,
+    /^([A-Za-zÀ-ÿ\s]{2,30})$/i // Nome sozinho
   ];
   
   for (const padrao of padroes) {
     const match = mensagem.match(padrao);
     if (match && !mensagem.toLowerCase().includes('profiss') && !mensagem.toLowerCase().includes('trabalho')) {
-      return match[1].trim();
+      const nome = match[1].trim();
+      console.log('✅ Nome extraído:', nome);
+      return nome;
     }
   }
   
+  console.log('❌ Nenhum nome encontrado');
   return null;
 }
 
-// Função para extrair profissão e especialidade
+// FUNÇÃO MELHORADA - Extrair profissão e especialidade universal
 function extrairProfissaoEspecialidade(mensagem) {
-  // Separar por vírgula, "especialista em", etc.
+  console.log('🔍 Extraindo profissão de:', mensagem);
+  
   let profissao = mensagem;
   let especialidade = null;
   
-  // Remover prefixos comuns
-  profissao = profissao.replace(/^(sou |trabalho como |atuo como |me formei em )/i, '');
+  // Remover prefixos comuns (mantendo sua lógica)
+  profissao = profissao.replace(/^(sou |trabalho como |atuo como |me formei em |formado em |especialista em |área de )/i, '');
   
-  // Buscar padrões de especialidade
-  const regexEspecialidade = /(.*?)(?:,|\s+)(?:especialista em|especialidade em|trabalho com|foco em|área de)\s+(.+)/i;
+  // Buscar padrões de especialidade (expandindo sua regex)
+  const regexEspecialidade = /(.*?)(?:,|\s+)(?:especialista em|especialidade em|trabalho com|foco em|área de|focado em|focada em|especializado em|especializada em|que trabalha com)\s+(.+)/i;
   const match = mensagem.match(regexEspecialidade);
   
   if (match) {
     profissao = match[1].trim();
     especialidade = match[2].trim();
   } else {
-    // Se não tem especialidade clara, usar a mensagem toda como profissão
+    // Se não tem especialidade clara, usar "Geral"
     especialidade = 'Geral';
   }
+  
+  console.log(`✅ Profissão: "${profissao}" | Especialidade: "${especialidade}"`);
   
   return {
     profissao: profissao,
