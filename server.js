@@ -30,17 +30,14 @@ async function processarAudio(audioUrl) {
     
     // Baixar o áudio
     const audioResponse = await axios.get(audioUrl, {
-      responseType: 'arraybuffer'
+      responseType: 'stream'
     });
     
     console.log('🎵 Áudio baixado, convertendo para texto...');
     
-    // Criar um buffer do áudio
-    const audioBuffer = Buffer.from(audioResponse.data);
-    
     // Converter para texto usando OpenAI Whisper
     const transcription = await openai.audio.transcriptions.create({
-      file: await toFile(audioBuffer, 'audio.ogg'),
+      file: audioResponse.data,
       model: 'whisper-1',
       language: 'pt'
     });
@@ -51,12 +48,6 @@ async function processarAudio(audioUrl) {
     console.error('❌ Erro ao processar áudio:', error.message);
     return null;
   }
-}
-
-// Função helper para converter buffer em file
-async function toFile(buffer, filename) {
-  const { File } = await import('buffer');
-  return new File([buffer], filename, { type: 'audio/ogg' });
 }
 async function enviarMensagemZAPI(telefone, mensagem) {
   const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
