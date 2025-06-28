@@ -35,14 +35,12 @@ async function processarAudio(audioUrl) {
     
     console.log('🎵 Áudio baixado, convertendo para texto...');
     
-    // Converter para texto usando OpenAI Whisper
-    const formData = new FormData();
-    formData.append('file', new Blob([audioResponse.data], { type: 'audio/ogg' }), 'audio.ogg');
-    formData.append('model', 'whisper-1');
-    formData.append('language', 'pt');
+    // Criar um buffer do áudio
+    const audioBuffer = Buffer.from(audioResponse.data);
     
+    // Converter para texto usando OpenAI Whisper
     const transcription = await openai.audio.transcriptions.create({
-      file: audioResponse.data,
+      file: await toFile(audioBuffer, 'audio.ogg'),
       model: 'whisper-1',
       language: 'pt'
     });
@@ -50,9 +48,15 @@ async function processarAudio(audioUrl) {
     console.log('✅ Texto transcrito:', transcription.text);
     return transcription.text;
   } catch (error) {
-    console.error('❌ Erro ao processar áudio:', error);
+    console.error('❌ Erro ao processar áudio:', error.message);
     return null;
   }
+}
+
+// Função helper para converter buffer em file
+async function toFile(buffer, filename) {
+  const { File } = await import('buffer');
+  return new File([buffer], filename, { type: 'audio/ogg' });
 }
 async function enviarMensagemZAPI(telefone, mensagem) {
   const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
