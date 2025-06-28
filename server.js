@@ -191,6 +191,8 @@ Recebi: "${mensagem}"
         console.log('✅ SUCESSO! Mensagem enviada:', response.data);
       } catch (apiError) {
         console.error('❌ Erro Z-API:', apiError.response?.data || apiError.message);
+        console.error('❌ Status Code:', apiError.response?.status);
+        console.error('❌ Response Headers:', apiError.response?.headers);
       }
     } else {
       console.log('🚫 Mensagem ignorada (fromMe ou sem phone)');
