@@ -107,152 +107,261 @@ function extrairDadosCompletos(mensagem) {
   return {};
 }
 
-// Sistema de conversa por etapas
+// Sistema de conversa por etapas - VERSÃO LUKE STORIES
 async function processarConversaEtapas(telefone, mensagem) {
-  console.log('🧠 Processando conversa por etapas...');
+  console.log('🧠 Processando conversa Luke Stories...');
   
   // Buscar usuário
   let usuario = await buscarUsuario(telefone);
-  console.log('👤 Usuário encontrado:', usuario ? `${usuario.nome} (status: ${usuario.status})` : 'Nenhum');
+  console.log('👤 Usuário encontrado:', usuario ? `${usuario.nome || 'Sem nome'} (status: ${usuario.status})` : 'Nenhum');
   
-  if (usuario && usuario.nome && usuario.profissao && usuario.especialidade && usuario.status === 'ativo') {
-    console.log(`👋 Usuário completo: ${usuario.nome}`);
-    
-    // Usuário completo - pode querer mudar especialidade
-    if (mensagem.toLowerCase().includes('mudar') || mensagem.toLowerCase().includes('alterar') || mensagem.toLowerCase().includes('trocar')) {
-      return `Oi ${usuario.nome}! 😊
+  // Verificar se usuário pagou
+  if (!usuario || usuario.status !== 'pago') {
+    return `🔒 *Acesso restrito!*
 
-Quer mudar sua especialidade? 
+Para usar o Luke Stories, você precisa adquirir o acesso primeiro.
 
-Atualmente você está como:
-💼 **${usuario.profissao}** - especialidade em **${usuario.especialidade}**
+💳 *Faça seu pagamento em:* [LINK DO CHECKOUT TICTO]
 
-🔄 *Me diga sua nova especialidade:*
-Ex: "agora é clareamento", "mudei para implantes", etc.`;
-    }
-    
-    // Resposta normal para usuário conhecido
-    return `Oi ${usuario.nome}! 😊
-
-Como ${usuario.profissao} especialista em **${usuario.especialidade}**, que tipo de story quer hoje?
-
-• 😄 **Humorado** - algo divertido
-• 📚 **Dica profissional** - compartilhar conhecimento  
-• 💪 **Motivacional** - inspirar seguidores
-• 🎯 **Promocional** - divulgar serviços
-• ✨ **Criativo** - algo diferenciado
-
-Só me falar o que tá sentindo hoje! 🚀`;
+Após o pagamento, você receberá acesso imediato! ✨`;
   }
   
-  if (!usuario) {
-    // Usuário novo - tentar extrair dados ou pedir nome
-    const dadosExtraidos = extrairDadosCompletos(mensagem);
+  // Usuário tem perfil completo
+  if (usuario.nome && usuario.profissao && usuario.especialidade) {
+    console.log(`✅ Usuário completo: ${usuario.nome}`);
     
-    if (dadosExtraidos.temNome && dadosExtraidos.temProfissao) {
-      // Tem nome E profissão na mesma mensagem
-      const novoUsuario = await supabase.from('usuarios').insert({
-        telefone: telefone,
-        nome: dadosExtraidos.nome,
-        profissao: dadosExtraidos.profissao,
-        status: 'aguardando_especialidade',
-        created_at: new Date()
-      }).select().single();
-      
-      return `Legal, ${dadosExtraidos.nome}! 👏
+    // Verificar se quer alterar informações
+    if (mensagem.toLowerCase().includes('alterar') || mensagem.toLowerCase().includes('mudar') || mensagem.toLowerCase().includes('trocar')) {
+      return `Oi ${usuario.nome}! 😊
 
-Então você trabalha como **${dadosExtraidos.profissao}**!
+Quer alterar suas informações?
 
-🎯 *Última pergunta:* Qual sua especialidade?
+📋 *Dados atuais:*
+👤 **Nome:** ${usuario.nome}
+💼 **Profissão:** ${usuario.profissao}
+🎯 **Especialidade:** ${usuario.especialidade}
+🏢 **Empresa:** ${usuario.empresa || 'Não informada'}
 
-Exemplos:
-🗣️ "Motor"
-🗣️ "Freios e suspensão"
-🗣️ "Elétrica automotiva"
-
-Fale do seu jeito! 🎤`;
+🔄 *Me diga o que quer alterar:*
+Ex: "Meu nome agora é...", "Mudei de especialidade para...", etc.`;
     }
     
-    if (dadosExtraidos.temNome) {
-      // Só tem nome
-      await supabase.from('usuarios').insert({
-        telefone: telefone,
-        nome: dadosExtraidos.nome,
-        status: 'aguardando_profissao',
-        created_at: new Date()
-      });
+    // Gerar texto personalizado baseado na solicitação
+    return await gerarTextoPersonalizado(usuario, mensagem);
+  }
+  
+  // Usuário incompleto - coletar dados por etapas
+  if (!usuario.nome) {
+    // Tentar extrair nome da mensagem
+    const nomeExtraido = extrairNome(mensagem);
+    
+    if (nomeExtraido) {
+      await supabase.from('usuarios')
+        .update({ nome: nomeExtraido })
+        .eq('telefone', telefone);
       
-      return `Prazer te conhecer, ${dadosExtraidos.nome}! 😊
+      return `Prazer te conhecer, ${nomeExtraido}! 😊
 
-🎯 *Agora me diga:* Qual sua profissão?
+🎯 *Agora me conte:*
+Qual sua **profissão e especialidade**?
 
 Exemplos:
-🗣️ "Sou barbeiro"
-🗣️ "Trabalho como dentista" 
-🗣️ "Nutricionista"
+🗣️ "Sou barbeiro, especialista em fade"
+🗣️ "Dentista, trabalho com implantes"
+🗣️ "Nutricionista focada em emagrecimento"
 
 Pode falar do seu jeito! 💬`;
     }
     
-    // Não entendeu o nome
-    return `👋 *Olá! Sou seu Bot de Stories!*
+    return `👋 *Oi! Sou o Luke Stories!*
 
-Para começar, preciso saber seu nome.
+Para personalizar meus textos para você, preciso te conhecer melhor.
 
-🎯 *Como você se chama?*
+🎯 *Como gostaria de ser chamado(a)?*
 
 Pode mandar por áudio ou texto! 😊`;
   }
   
-  if (usuario && usuario.nome && !usuario.profissao) {
-    // Tem nome, falta profissão
+  if (!usuario.profissao) {
+    // Extrair profissão e especialidade
+    const dadosProfissionais = extrairProfissaoEspecialidade(mensagem);
+    
     await supabase.from('usuarios')
       .update({ 
-        profissao: mensagem.trim(),
-        status: 'aguardando_especialidade'
+        profissao: dadosProfissionais.profissao,
+        especialidade: dadosProfissionais.especialidade
       })
       .eq('telefone', telefone);
     
-    return `Legal, ${usuario.nome}! 👏
+    return `Excelente, ${usuario.nome}! 👏
 
-Então você trabalha como **${mensagem.trim()}**!
+📋 *Registrei:*
+💼 **Profissão:** ${dadosProfissionais.profissao}
+🎯 **Especialidade:** ${dadosProfissionais.especialidade}
 
-🎯 *Última pergunta:* Qual sua especialidade?
+🏢 *Última pergunta:* Você tem empresa/negócio? Qual o nome?
 
-Exemplos:
-🗣️ "Especialidade em fade"
-🗣️ "Trabalho com implantes"
-🗣️ "Foco em emagrecimento"
-
-Fale do seu jeito, sem pressa! 🎤`;
+Se não tiver, pode falar "não tenho empresa" 😊`;
   }
   
-  if (usuario && usuario.nome && usuario.profissao && !usuario.especialidade) {
-    // Tem nome e profissão, falta especialidade
+  if (!usuario.empresa) {
+    // Salvar empresa
+    const empresa = mensagem.toLowerCase().includes('não') || mensagem.toLowerCase().includes('nao') ? 
+      'Profissional autônomo' : mensagem.trim();
+    
     await supabase.from('usuarios')
       .update({ 
-        especialidade: mensagem.trim(),
-        status: 'ativo'
+        empresa: empresa,
+        status: 'ativo_completo'
       })
       .eq('telefone', telefone);
     
     return `🎉 *Perfeito, ${usuario.nome}!*
 
-Agora sei tudo sobre você:
+Agora tenho tudo que preciso:
 👤 **Nome:** ${usuario.nome}
 💼 **Profissão:** ${usuario.profissao}
-🎯 **Especialidade:** ${mensagem.trim()}
+🎯 **Especialidade:** ${usuario.especialidade}
+🏢 **Empresa:** ${empresa}
 
-🚀 *Pronto para criar stories incríveis!*
+🚀 *AGORA ESTAMOS PRONTOS!*
 
-Que tipo de conteúdo quer hoje?
-• 😄 **Humorado** • 📚 **Dica profissional** 
-• 💪 **Motivacional** • 🎯 **Promocional** • ✨ **Criativo**
+Me mande suas solicitações como:
+💬 "Preciso de um texto animado para gravar em casa"
+💬 "Estou no consultório, quero uma dica sobre [assunto]"
+💬 "Quero algo promocional para meus serviços"
 
-Pode falar qual vibe quer! 😊`;
+*Pode mandar por áudio!* 🎤`;
   }
   
-  return "Ops! Algo deu errado. Pode tentar novamente?";
+  return "Algo deu errado, pode tentar novamente?";
+}
+
+// Função para extrair nome de forma simples
+function extrairNome(mensagem) {
+  // Padrões comuns para nomes
+  const padroes = [
+    /(?:me chamo|meu nome é|sou |eu sou )?([A-Za-zÀ-ÿ]{2,20})(?:\s|$|,|\.)/i,
+    /^([A-Za-zÀ-ÿ]{2,20})$/i // Nome sozinho
+  ];
+  
+  for (const padrao of padroes) {
+    const match = mensagem.match(padrao);
+    if (match && !mensagem.toLowerCase().includes('profiss') && !mensagem.toLowerCase().includes('trabalho')) {
+      return match[1].trim();
+    }
+  }
+  
+  return null;
+}
+
+// Função para extrair profissão e especialidade
+function extrairProfissaoEspecialidade(mensagem) {
+  // Separar por vírgula, "especialista em", etc.
+  let profissao = mensagem;
+  let especialidade = null;
+  
+  // Remover prefixos comuns
+  profissao = profissao.replace(/^(sou |trabalho como |atuo como |me formei em )/i, '');
+  
+  // Buscar padrões de especialidade
+  const regexEspecialidade = /(.*?)(?:,|\s+)(?:especialista em|especialidade em|trabalho com|foco em|área de)\s+(.+)/i;
+  const match = mensagem.match(regexEspecialidade);
+  
+  if (match) {
+    profissao = match[1].trim();
+    especialidade = match[2].trim();
+  } else {
+    // Se não tem especialidade clara, usar a mensagem toda como profissão
+    especialidade = 'Geral';
+  }
+  
+  return {
+    profissao: profissao,
+    especialidade: especialidade
+  };
+}
+
+// Função para gerar texto personalizado
+async function gerarTextoPersonalizado(usuario, solicitacao) {
+  console.log(`🎯 Gerando texto para ${usuario.nome}: ${solicitacao}`);
+  
+  const prompt = `Você é o Luke Stories, assistente pessoal para criação de textos para stories e conteúdo.
+
+DADOS DO USUÁRIO:
+- Nome: ${usuario.nome}
+- Profissão: ${usuario.profissao}
+- Especialidade: ${usuario.especialidade}
+- Empresa: ${usuario.empresa || 'Profissional autônomo'}
+
+SOLICITAÇÃO: ${solicitacao}
+
+INSTRUÇÕES:
+1. Crie um texto curto (máximo 150 palavras) para o usuário gravar
+2. Use o nome da pessoa no texto
+3. Adapte o tom conforme a solicitação (animado, profissional, motivacional, etc.)
+4. Inclua call-to-action sutil relacionado à profissão
+5. Seja natural e conversacional
+6. Se for uma dica, seja específico da área de especialidade
+
+FORMATO DA RESPOSTA:
+{
+  "texto_para_gravar": "texto que o usuário vai gravar",
+  "dicas_gravacao": "dicas de como gravar (tom, gestos, etc.)",
+  "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3"]
+}
+
+Responda APENAS com o JSON válido.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 400
+    });
+
+    const resultado = JSON.parse(completion.choices[0].message.content);
+    
+    // Salvar interação no histórico
+    await supabase.from('conversas').insert({
+      telefone: usuario.telefone,
+      usuario_id: usuario.id,
+      mensagem_usuario: solicitacao,
+      resposta_bot: JSON.stringify(resultado),
+      created_at: new Date()
+    });
+    
+    return `🎬 *Seu texto personalizado, ${usuario.nome}!*
+
+📱 **TEXTO PARA GRAVAR:**
+"${resultado.texto_para_gravar}"
+
+🎭 **DICAS DE GRAVAÇÃO:**
+${resultado.dicas_gravacao}
+
+🏷️ **HASHTAGS:**
+${resultado.hashtags.join(' ')}
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de outro texto? Só me falar!* ✨`;
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar texto personalizado:', error);
+    
+    return `🎬 *Texto para você, ${usuario.nome}!*
+
+📱 **TEXTO PARA GRAVAR:**
+"Oi, eu sou ${usuario.nome}! Como ${usuario.profissao} especialista em ${usuario.especialidade}, estou aqui para te ajudar com o que você precisar. ${usuario.empresa !== 'Profissional autônomo' ? `Aqui na ${usuario.empresa}` : 'No meu trabalho'}, eu faço questão de dar o meu melhor para você. Vem conversar comigo!"
+
+🎭 **DICA:** Grave com energia e sorria!
+
+🏷️ **HASHTAGS:** #${usuario.profissao.replace(/\s/g, '')} #${usuario.especialidade.replace(/\s/g, '')} #profissional
+
+---
+✨ *Precisa de outro texto? Só me falar!* ✨`;
+  }
 }
 
 // Função para obter exemplos de especialidade por profissão
@@ -411,10 +520,96 @@ app.post('/test-gpt', async (req, res) => {
   }
 });
 
-// Webhook Ticto
+// Webhook Ticto - INTEGRAÇÃO COM PAGAMENTO
 app.post('/webhook/ticto', async (req, res) => {
-  console.log('💰 Webhook Ticto recebido:', req.body);
-  res.json({ status: 'received' });
+  try {
+    console.log('💰 Webhook Ticto recebido:', req.body);
+    
+    const { telefone, email, nome, valor } = req.body;
+    
+    if (!telefone) {
+      console.error('❌ Telefone não fornecido no webhook Ticto');
+      return res.status(400).json({ error: 'Telefone obrigatório' });
+    }
+    
+    // Ajustar número se necessário
+    let telefoneAjustado = telefone;
+    if (telefone.length === 12 && telefone.startsWith('5562')) {
+      telefoneAjustado = telefone.substr(0, 4) + '9' + telefone.substr(4);
+    }
+    
+    console.log(`💳 Pagamento aprovado para: ${telefoneAjustado}`);
+    
+    // Verificar se usuário já existe
+    let usuario = await buscarUsuario(telefoneAjustado);
+    
+    if (usuario) {
+      // Usuário já existe - atualizar status de pagamento
+      await supabase.from('usuarios')
+        .update({ 
+          status: 'pago',
+          data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 dias
+        })
+        .eq('telefone', telefoneAjustado);
+    } else {
+      // Usuário novo - criar no banco
+      await supabase.from('usuarios').insert({
+        telefone: telefoneAjustado,
+        email: email,
+        status: 'pago',
+        created_at: new Date(),
+        data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 dias
+      });
+    }
+    
+    // Enviar mensagem de boas-vindas
+    const mensagemBoasVindas = `🎉 *Olá! Eu sou o Luke Stories!*
+
+Seu assistente pessoal para criar textos e ideias que vão te ajudar a gravar conteúdos incríveis e fazer sua imagem pessoal e empresa crescerem! 🚀
+
+📋 *ANTES DE COMEÇAR:*
+Preciso de algumas informações importantes:
+
+🔹 *Como gostaria de ser chamado(a)?*
+🔹 *Qual sua profissão e especialidade?*
+🔹 *Que serviços você oferece?*
+🔹 *Tem empresa/negócio? Qual o nome?*
+
+📱 *COMO USAR O LUKE STORIES:*
+
+🏠 *Em casa:* "Preciso de um texto pra gravar aqui em casa agora, de forma animada e motivacional"
+
+🛍️ *No shopping:* "Estou no shopping comprando um relógio, quero uma ideia curta e espontânea"
+
+💡 *Para dicas:* "Quero gravar uma dica sobre [seu assunto]"
+
+✨ *Pode mandar por ÁUDIO ou TEXTO* - eu entendo tudo!
+
+Vamos começar? Me mande suas informações! 😊`;
+
+    // Enviar via Z-API
+    const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+    
+    await axios.post(`${ZAPI_URL}/send-text`, {
+      phone: telefoneAjustado,
+      message: mensagemBoasVindas
+    }, {
+      headers: {
+        'Client-Token': process.env.ZAPI_CLIENT_TOKEN
+      }
+    });
+    
+    console.log('✅ Mensagem de boas-vindas enviada para:', telefoneAjustado);
+    
+    res.status(200).json({ 
+      status: 'success',
+      message: 'Usuário ativado e mensagem enviada'
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro no webhook Ticto:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Webhook Z-API - VERSÃO COM MEMÓRIA INTELIGENTE
