@@ -517,70 +517,6 @@ Após o pagamento, você receberá acesso imediato! ✨`;
   if (usuario.nome && usuario.profissao && usuario.especialidade) {
     console.log(`✅ Usuário completo: ${usuario.nome}`);
     
-    // Verificar se tem imagem pendente para processar
-    if (usuario.aguardando_confirmacao_imagem && usuario.imagem_pendente) {
-      console.log('📸 Processando confirmação de imagem...');
-      
-      const respostaLower = mensagem.toLowerCase();
-      
-      if (respostaLower.includes('sim') || respostaLower.includes('crie') || respostaLower.includes('legenda')) {
-        // Usuario quer legenda - processar imagem
-        console.log('✅ Usuário confirmou criação de legenda');
-        
-        // Limpar estado de imagem pendente
-        await supabase.from('usuarios')
-          .update({ 
-            aguardando_confirmacao_imagem: false,
-            imagem_pendente: null,
-            updated_at: new Date()
-          })
-          .eq('telefone', telefone);
-        
-        // Processar imagem com contexto adicional se especificado
-        let contextoAdicional = '';
-        if (respostaLower.includes('sobre') || respostaLower.includes('legenda sobre')) {
-          contextoAdicional = `\n\nContexto específico solicitado: ${mensagem}`;
-        }
-        
-        return await processarImagem(usuario.imagem_pendente, telefone, contextoAdicional);
-      } 
-      else if (respostaLower.includes('não') || respostaLower.includes('nao') || respostaLower.includes('não precisa')) {
-        // Usuario não quer legenda
-        console.log('❌ Usuário não quer legenda');
-        
-        // Limpar estado de imagem pendente
-        await supabase.from('usuarios')
-          .update({ 
-            aguardando_confirmacao_imagem: false,
-            imagem_pendente: null,
-            updated_at: new Date()
-          })
-          .eq('telefone', telefone);
-        
-        return `Entendido! 😊
-
-Sua foto foi ignorada. 
-
-💬 **Posso ajudar com:**
-📝 Criar textos para stories
-🎤 Ideias para gravações
-📸 Legendas para fotos (quando quiser)
-
-O que gostaria de criar hoje? ✨`;
-      }
-      else {
-        // Resposta não clara - pedir confirmação novamente
-        return `Não entendi bem sua resposta! 😅
-
-📸 **Para sua foto, você quer:**
-✅ *"Sim, crie uma legenda"* 
-❌ *"Não precisa"*
-🎯 *"Quero legenda sobre [assunto específico]"*
-
-Me diga claramente o que prefere! 😊`;
-      }
-    }
-    
     // Verificar se quer alterar informações
     if (mensagem.toLowerCase().includes('alterar') || mensagem.toLowerCase().includes('mudar') || mensagem.toLowerCase().includes('trocar')) {
       return `Oi ${usuario.nome}! 😊
@@ -615,7 +551,6 @@ Como ${usuario.profissao} especialista em ${usuario.especialidade}, posso te aju
 📱 "Quero um texto para gravar hoje"
 🎯 "Preciso de uma dica sobre [assunto]"
 ✨ "Ideia para story de [situação]"
-📸 "Envie uma foto para eu criar legenda"
 
 *Pode mandar por áudio também!* 🎤
 
@@ -786,148 +721,7 @@ function extrairProfissaoEspecialidade(mensagem) {
   };
 }
 
-// Função para processar imagem com GPT-4 Vision
-async function processarImagem(imageUrl, telefone) {
-  try {
-    console.log('📸 Baixando imagem:', imageUrl);
-    console.log('🕐 Início download:', new Date().toISOString());
-    
-    const imageResponse = await axios.get(imageUrl, {
-      responseType: 'arraybuffer',
-      timeout: 15000
-    });
-    
-    console.log('✅ Imagem baixada!');
-    console.log('📊 Tamanho do arquivo:', imageResponse.data.byteLength, 'bytes');
-    
-    // Converter para base64
-    const base64Image = Buffer.from(imageResponse.data).toString('base64');
-    const dataUrl = `data:image/jpeg;base64,${base64Image}`;
-    
-    console.log('🕐 Fim download:', new Date().toISOString());
-    console.log('✅ Imagem convertida para base64');
-    
-    // Buscar usuário para personalizar análise
-    const usuario = await buscarUsuario(telefone);
-    if (!usuario) {
-      return "❌ Erro ao processar imagem. Usuário não encontrado.";
-    }
-    
-    // Buscar preferências para personalizar legenda
-    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.id);
-    
-    console.log('📸 Enviando para GPT-4 Vision...');
-    console.log('🕐 Início Vision:', new Date().toISOString());
-    
-    const prompt = `Você é o Luke Stories, especialista em criar legendas para ${usuario.profissao}.
-
-DADOS DO USUÁRIO:
-- Nome: ${usuario.nome}
-- Profissão: ${usuario.profissao}
-- Especialidade: ${usuario.especialidade}
-- Empresa: ${usuario.empresa || 'Profissional autônomo'}
-
-${preferencias ? `PREFERÊNCIAS APRENDIDAS:
-- Tom preferido: ${preferencias.tom_preferido || 'equilibrado'}
-- Tamanho: ${preferencias.tamanho_preferido || 'médio'}
-- Call-to-action: ${preferencias.call_to_action || 'sutil'}
-- Forma de chamar seguidores: ${preferencias.forma_chamar_seguidores || 'pessoal'}` : ''}
-
-INSTRUÇÕES:
-1. Analise a imagem profissionalmente no contexto de ${usuario.profissao}
-2. Crie uma legenda criativa e envolvente
-3. Use o tom ${preferencias?.tom_preferido || 'profissional mas acessível'}
-4. Tamanho ${preferencias?.tamanho_preferido || 'médio'} (80-120 palavras)
-5. Inclua call-to-action ${preferencias?.call_to_action || 'sutil'}
-6. Seja específico para a área de ${usuario.especialidade}
-7. Use linguagem natural e envolvente
-
-FORMATO DA RESPOSTA:
-{
-  "legenda_para_postar": "legenda completa para o post",
-  "dicas_posting": "dicas de como/quando postar",
-  "observacoes": "observações sobre a imagem analisada"
-}
-
-Responda APENAS com o JSON válido.`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-vision-preview",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: prompt
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: dataUrl
-              }
-            }
-          ]
-        }
-      ],
-      max_tokens: 500
-    });
-
-    console.log('🕐 Fim Vision:', new Date().toISOString());
-    console.log('✅ Análise da imagem concluída');
-
-    const resultado = JSON.parse(completion.choices[0].message.content);
-    
-    // Salvar interação no histórico
-    await supabase.from('conversas').insert({
-      telefone: usuario.telefone,
-      usuario_id: usuario.id,
-      mensagem_usuario: '[IMAGEM ANALISADA]',
-      resposta_bot: JSON.stringify(resultado),
-      tipo_mensagem: 'legenda_imagem',
-      created_at: new Date()
-    });
-    
-    // Atualizar preferências se existir
-    if (preferencias) {
-      await salvarPreferenciasUsuario(telefone, usuario.id, {
-        ...preferencias,
-        ultima_interacao: new Date()
-      });
-    }
-    
-    return `📸 **LEGENDA CRIADA PARA SUA FOTO:**
-
-"${resultado.legenda_para_postar}"
-
-📱 **DICAS DE POSTAGEM:**
-${resultado.dicas_posting}
-
-💡 **OBSERVAÇÕES:**
-${resultado.observacoes}
-
----
-📋 *Para copiar:* Mantenha pressionado o texto acima
-
-✨ *Precisa de ajustes na legenda? Só me falar!* ✨`;
-
-  } catch (error) {
-    console.log('🕐 Erro em:', new Date().toISOString());
-    console.error('❌ Erro detalhado:', {
-      message: error.message,
-      code: error.code,
-      status: error.status
-    });
-    
-    return `❌ Ops! Tive um problema ao analisar sua imagem.
-
-💡 **Pode tentar:**
-🔄 Enviar a imagem novamente
-📝 Ou me contar o que tem na foto que eu crio uma legenda
-
-✨ *Estou aqui para ajudar!* ✨`;
-  }
-}
+// Função para processar áudio com Whisper
 async function processarAudio(audioUrl) {
   try {
     console.log('🎵 Baixando áudio:', audioUrl);
@@ -1172,92 +966,19 @@ app.post('/webhook/zapi', async (req, res) => {
       let resposta = '';
       
       // Verificar tipo de mídia recebida
-      if (webhook.image?.imageUrl) {
-        console.log('📸 IMAGEM RECEBIDA!');
-        console.log('📸 URL:', webhook.image.imageUrl);
-        
-        // PRIMEIRO: Buscar usuário
-        const usuario = await buscarUsuario(telefone);
-        
-        if (!usuario || usuario.status !== 'pago') {
-          resposta = `🔒 *Acesso restrito!*
-
-Para usar o Luke Stories, você precisa adquirir o acesso primeiro.
-
-💳 *Faça seu pagamento em:* 
-https://payment.ticto.app/O6D37000C
-
-Após o pagamento, você receberá acesso imediato! ✨`;
-
-          // Enviar resposta
-          const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
-          
-          await axios.post(`${ZAPI_URL}/send-text`, {
-            phone: telefone,
-            message: resposta
-          }, {
-            headers: {
-              'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-            }
-          });
-          
-          console.log('✅ Resposta de acesso restrito enviada');
-          return res.status(200).json({ status: 'access_denied' });
-        }
-        
-        // Perguntar se quer criar legenda
-        resposta = `📸 **Foto recebida!**
-
-Você gostaria que eu criasse uma **legenda personalizada** para essa foto?
-
-💡 **Opções:**
-📝 *"Sim, crie uma legenda"* - para legenda automática
-🎯 *"Quero legenda sobre [assunto específico]"* - para foco personalizado
-❌ *"Não precisa"* - se não quer legenda
-
-Como ${usuario.profissao}, posso criar uma legenda perfeita para seu público! ✨
-
-O que prefere? 😊`;
-
-        // Salvar URL da imagem temporariamente no usuário
-        await supabase.from('usuarios')
-          .update({ 
-            imagem_pendente: webhook.image.imageUrl,
-            aguardando_confirmacao_imagem: true,
-            updated_at: new Date()
-          })
-          .eq('telefone', telefone);
-
-        // Enviar resposta
-        const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
-        
-        await axios.post(`${ZAPI_URL}/send-text`, {
-          phone: telefone,
-          message: resposta
-        }, {
-          headers: {
-            'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-          }
-        });
-        
-        console.log('✅ Pergunta sobre legenda enviada');
-        return res.status(200).json({ status: 'image_confirmation_sent' });
-      }
-      
-      if (webhook.video || webhook.document || webhook.sticker) {
+      if (webhook.image || webhook.video || webhook.document || webhook.sticker) {
         console.log('📸 Mídia não suportada recebida');
         
         // Resposta educada para mídias não suportadas
         resposta = `Oi! 😊
 
-Infelizmente, não consigo processar vídeos ou documentos. 
+Infelizmente, não consigo processar vídeos, fotos ou documentos. 
 
 ✅ **Posso ajudar com:**
 🗣️ Mensagens de texto
 🎤 Mensagens de áudio
-📸 **Fotos** (crio legendas personalizadas!)
 
-💬 *Mande sua solicitação por texto, áudio ou foto que eu crio conteúdo incrível para você!* ✨`;
+💬 *Mande sua solicitação por texto ou áudio que eu crio um texto incrível para você!* ✨`;
 
         // Enviar resposta
         const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
