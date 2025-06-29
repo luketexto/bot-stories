@@ -23,7 +23,164 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Função para buscar usuário no banco
+// SISTEMA DE APRENDIZADO - Buscar preferências do usuário
+async function buscarPreferenciasUsuario(telefone, usuarioId) {
+  try {
+    const { data: preferencias, error } = await supabase
+      .from('usuario_preferencias')
+      .select('*')
+      .eq('telefone', telefone)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      console.error('❌ Erro ao buscar preferências:', error);
+      return null;
+    }
+    
+    return preferencias;
+  } catch (error) {
+    console.error('❌ Erro ao buscar preferências:', error);
+    return null;
+  }
+}
+
+// SISTEMA DE APRENDIZADO - Analisar histórico e detectar padrões
+async function analisarHistoricoUsuario(telefone, usuarioId) {
+  try {
+    console.log('🔍 Analisando histórico do usuário...');
+    
+    // Buscar últimas 10 interações
+    const { data: conversas, error } = await supabase
+      .from('conversas')
+      .select('*')
+      .eq('telefone', telefone)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    
+    if (error || !conversas || conversas.length === 0) {
+      console.log('📝 Sem histórico suficiente para análise');
+      return null;
+    }
+    
+    console.log(`📊 Analisando ${conversas.length} interações...`);
+    
+    // Análise de padrões
+    let padroes = {
+      tamanho_medio: 0,
+      tons_usados: {},
+      palavras_frequentes: {},
+      call_to_actions: 0,
+      mencoes_nome: 0,
+      total_palavras: 0
+    };
+    
+    conversas.forEach(conversa => {
+      try {
+        const resposta = JSON.parse(conversa.resposta_bot || '{}');
+        const texto = resposta.texto_para_gravar || '';
+        
+        if (texto) {
+          // Análise de tamanho
+          const palavras = texto.split(' ').length;
+          padroes.total_palavras += palavras;
+          
+          // Detectar tom (palavras-chave)
+          if (texto.includes('animad') || texto.includes('energia')) padroes.tons_usados.animado = (padroes.tons_usados.animado || 0) + 1;
+          if (texto.includes('motivação') || texto.includes('objetivo')) padroes.tons_usados.motivacional = (padroes.tons_usados.motivacional || 0) + 1;
+          if (texto.includes('profissional') || texto.includes('técnic')) padroes.tons_usados.serio = (padroes.tons_usados.serio || 0) + 1;
+          
+          // Detectar call-to-action
+          if (texto.includes('me chama') || texto.includes('entre em contato') || texto.includes('agende')) {
+            padroes.call_to_actions++;
+          }
+          
+          // Detectar menções do nome
+          if (texto.includes('eu sou') || texto.includes('aqui é')) {
+            padroes.mencoes_nome++;
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ Erro ao processar conversa:', e.message);
+      }
+    });
+    
+    // Calcular médias e preferências
+    const totalConversas = conversas.length;
+    padroes.tamanho_medio = Math.round(padroes.total_palavras / totalConversas);
+    
+    // Determinar tom preferido
+    const tomMaisUsado = Object.keys(padroes.tons_usados).reduce((a, b) => 
+      padroes.tons_usados[a] > padroes.tons_usados[b] ? a : b, 'equilibrado');
+    
+    // Determinar preferências
+    const preferenciasDetectadas = {
+      tamanho_preferido: padroes.tamanho_medio < 80 ? 'curto' : padroes.tamanho_medio < 150 ? 'médio' : 'longo',
+      tom_preferido: tomMaisUsado,
+      call_to_action: padroes.call_to_actions > totalConversas * 0.6 ? 'direto' : 'sutil',
+      mencao_nome_frequencia: padroes.mencoes_nome > totalConversas * 0.7 ? 'sempre' : 'às vezes',
+      total_textos_gerados: totalConversas,
+      ultima_interacao: new Date(),
+      padroes_detectados: padroes
+    };
+    
+    console.log('✅ Padrões detectados:', preferenciasDetectadas);
+    return preferenciasDetectadas;
+    
+  } catch (error) {
+    console.error('❌ Erro na análise do histórico:', error);
+    return null;
+  }
+}
+
+// SISTEMA DE APRENDIZADO - Salvar/atualizar preferências
+async function salvarPreferenciasUsuario(telefone, usuarioId, preferencias) {
+  try {
+    console.log('💾 Salvando preferências do usuário...');
+    
+    // Verificar se já existe
+    const preferenciasExistentes = await buscarPreferenciasUsuario(telefone, usuarioId);
+    
+    if (preferenciasExistentes) {
+      // Atualizar existente
+      const { data, error } = await supabase
+        .from('usuario_preferencias')
+        .update({
+          ...preferencias,
+          updated_at: new Date(),
+          total_textos_gerados: (preferenciasExistentes.total_textos_gerados || 0) + 1
+        })
+        .eq('telefone', telefone);
+      
+      if (error) {
+        console.error('❌ Erro ao atualizar preferências:', error);
+        return false;
+      }
+    } else {
+      // Criar novo
+      const { data, error } = await supabase
+        .from('usuario_preferencias')
+        .insert({
+          telefone: telefone,
+          usuario_id: usuarioId,
+          ...preferencias,
+          total_textos_gerados: 1,
+          created_at: new Date(),
+          updated_at: new Date()
+        });
+      
+      if (error) {
+        console.error('❌ Erro ao criar preferências:', error);
+        return false;
+      }
+    }
+    
+    console.log('✅ Preferências salvas com sucesso');
+    return true;
+  } catch (error) {
+    console.error('❌ Erro ao salvar preferências:', error);
+    return false;
+  }
+}
 async function buscarUsuario(telefone) {
   try {
     const { data: usuario, error } = await supabase
@@ -212,9 +369,29 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
   return await criarTextoComIA(usuario, solicitacao, false);
 }
 
-// FUNÇÃO MELHORADA - Criar texto com IA
+// FUNÇÃO MELHORADA - Criar texto com IA + APRENDIZADO
 async function criarTextoComIA(usuario, solicitacao, foiRefinado = false) {
-  const prompt = `Você é o Luke Stories, assistente pessoal para criação de textos para stories e conteúdo.
+  console.log('🧠 Criando texto com aprendizado individual...');
+  
+  // Buscar preferências do usuário
+  const preferencias = await buscarPreferenciasUsuario(usuario.telefone, usuario.id);
+  console.log('📊 Preferências encontradas:', preferencias ? 'SIM' : 'NÃO');
+  
+  // Se não tem preferências suficientes, analisar histórico
+  let preferenciasParaUsar = preferencias;
+  if (!preferencias || (preferencias.total_textos_gerados || 0) < 3) {
+    console.log('🔍 Analisando histórico para detectar padrões...');
+    const padroes = await analisarHistoricoUsuario(usuario.telefone, usuario.id);
+    
+    if (padroes) {
+      // Salvar padrões detectados
+      await salvarPreferenciasUsuario(usuario.telefone, usuario.id, padroes);
+      preferenciasParaUsar = padroes;
+    }
+  }
+  
+  // Construir prompt personalizado com aprendizado
+  let promptPersonalizado = `Você é o Luke Stories, assistente pessoal para criação de textos para stories e conteúdo.
 
 DADOS DO USUÁRIO:
 - Nome: ${usuario.nome}
@@ -222,14 +399,31 @@ DADOS DO USUÁRIO:
 - Especialidade: ${usuario.especialidade}
 - Empresa: ${usuario.empresa || 'Profissional autônomo'}
 
-SOLICITAÇÃO${foiRefinado ? ' (COM REFINAMENTO)' : ''}: ${solicitacao}
+SOLICITAÇÃO${foiRefinado ? ' (COM REFINAMENTO)' : ''}: ${solicitacao}`;
+
+  // Adicionar preferências ao prompt se disponível
+  if (preferenciasParaUsar) {
+    promptPersonalizado += `
+
+PREFERÊNCIAS APRENDIDAS DO USUÁRIO:
+- Tamanho preferido: ${preferenciasParaUsar.tamanho_preferido || 'médio'} (${preferenciasParaUsar.tamanho_preferido === 'curto' ? '60-100 palavras' : preferenciasParaUsar.tamanho_preferido === 'médio' ? '100-150 palavras' : '150-200 palavras'})
+- Tom preferido: ${preferenciasParaUsar.tom_preferido || 'equilibrado'}
+- Call-to-action: ${preferenciasParaUsar.call_to_action || 'sutil'}
+- Menção do nome: ${preferenciasParaUsar.mencao_nome_frequencia || 'às vezes'}
+- Forma de chamar seguidores: ${preferenciasParaUsar.forma_chamar_seguidores || 'pessoal'}
+- Nível técnico: ${preferenciasParaUsar.nivel_tecnico || 'intermediário'}
+
+IMPORTANTE: Use essas preferências como base, mas adapte conforme a solicitação específica.`;
+  }
+
+  promptPersonalizado += `
 
 INSTRUÇÕES AVANÇADAS:
-1. Crie um texto dinâmico e personalizado (máximo 150 palavras)
+1. Crie um texto dinâmico e personalizado${preferenciasParaUsar ? ' seguindo as preferências aprendidas' : ''}
 2. Use o nome da pessoa de forma natural
-3. Adapte PERFEITAMENTE ao tom solicitado (animado, sério, motivacional, etc.)
+3. Adapte PERFEITAMENTE ao tom solicitado (ou preferido se não especificado)
 4. Se foi refinado, use TODAS as informações fornecidas pelo usuário
-5. Inclua call-to-action adequado se solicitado
+5. Inclua call-to-action adequado conforme preferência
 6. Seja específico da área de especialidade quando relevante
 7. Use linguagem natural e conversacional
 8. Se for sobre assunto específico, seja criativo e educativo
@@ -246,7 +440,7 @@ Responda APENAS com o JSON válido.`;
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: promptPersonalizado }],
       max_tokens: 500
     });
 
@@ -262,6 +456,14 @@ Responda APENAS com o JSON válido.`;
       created_at: new Date()
     });
     
+    // Atualizar contador de textos gerados
+    if (preferenciasParaUsar) {
+      await salvarPreferenciasUsuario(usuario.telefone, usuario.id, {
+        ...preferenciasParaUsar,
+        ultima_interacao: new Date()
+      });
+    }
+    
     return `📱 **TEXTO PARA GRAVAR:**
 "${resultado.texto_para_gravar}"
 
@@ -269,7 +471,7 @@ Responda APENAS com o JSON válido.`;
 ${resultado.dicas_gravacao}
 
 💡 **OBSERVAÇÕES:**
-${resultado.observacoes}
+${resultado.observacoes}${preferenciasParaUsar ? '\n\n🧠 *Texto criado com base no seu histórico de preferências*' : ''}
 
 ---
 📋 *Para copiar:* Mantenha pressionado o texto acima
