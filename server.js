@@ -471,7 +471,7 @@ Responda APENAS com o JSON válido.`;
 ${resultado.dicas_gravacao}
 
 💡 **OBSERVAÇÕES:**
-${resultado.observacoes}${preferenciasParaUsar ? '\n\n🧠 *Texto criado com base no seu histórico de preferências*' : ''}
+${resultado.observacoes}
 
 ---
 📋 *Para copiar:* Mantenha pressionado o texto acima
