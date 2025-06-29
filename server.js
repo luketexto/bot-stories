@@ -207,6 +207,23 @@ function analisarSolicitacao(solicitacao, usuario) {
   
   const texto = solicitacao.toLowerCase();
   
+  // Detectar perguntas não relacionadas ao trabalho/conteúdo
+  const perguntasGenericas = [
+    'quem é', 'o que é', 'quando', 'onde', 'como funciona', 'qual é',
+    'presidente', 'política', 'governo', 'eleição', 'notícia', 'news',
+    'clima', 'tempo', 'hora', 'data', 'matemática', 'história',
+    'geografia', 'ciência', 'medicina geral', 'receita', 'piada'
+  ];
+  
+  const ePerguntaGenerica = perguntasGenericas.some(palavra => texto.includes(palavra));
+  
+  if (ePerguntaGenerica && !texto.includes('texto') && !texto.includes('legenda') && !texto.includes('story')) {
+    return {
+      precisaPerguntas: false,
+      tipo: 'pergunta_generica'
+    };
+  }
+  
   // Detectar se a solicitação é muito genérica (precisa de perguntas)
   const palavrasGenericas = [
     'texto', 'ideia', 'algo', 'story', 'stories', 'conteudo', 'conteúdo',
@@ -327,6 +344,27 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
   
   // ANALISAR SE PRECISA DE PERGUNTAS DE REFINAMENTO
   const analise = analisarSolicitacao(solicitacao, usuario);
+  
+  // Verificar se é pergunta genérica (não relacionada ao trabalho)
+  if (analise.tipo === 'pergunta_generica') {
+    console.log('❓ Pergunta genérica detectada - redirecionando');
+    
+    return `Oi ${usuario.nome}! 😊
+
+Eu sou o Luke Stories, especialista em criar **textos e ideias** para você gravar e postar em suas redes sociais.
+
+Não estou habilitado para responder outros tipos de perguntas. 
+
+💡 **Mas posso ajudar você com:**
+📱 Textos para stories e posts
+📸 Legendas para suas fotos  
+🎯 Ideias criativas para seu conteúdo
+💼 Conteúdo profissional sobre ${usuario.especialidade}
+
+🤔 **Ou você quer que eu crie um texto com sua opinião profissional** sobre esse assunto relacionado ao seu trabalho como ${usuario.profissao}?
+
+Me diga como posso te ajudar com seu conteúdo! ✨`;
+  }
   
   if (analise.precisaPerguntas) {
     console.log('❓ Solicitação precisa de refinamento');
@@ -896,7 +934,7 @@ Responda APENAS com o JSON válido.`;
       });
     }
     
-    return `📸 **LEGENDA CRIADA PARA SUA FOTO:**
+        return `📸 **LEGENDA CRIADA PARA SUA FOTO:**
 
 "${resultado.legenda_para_postar}"
 
