@@ -825,7 +825,7 @@ function extrairProfissaoEspecialidade(mensagem) {
 }
 
 // Função para processar imagem com GPT-4 Vision
-async function processarImagem(imageUrl, telefone) {
+async function processarImagem(imageUrl, telefone, contextoAdicional = '') {
   try {
     console.log('📸 Baixando imagem:', imageUrl);
     console.log('🕐 Início download:', new Date().toISOString());
