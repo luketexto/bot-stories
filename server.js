@@ -207,23 +207,6 @@ function analisarSolicitacao(solicitacao, usuario) {
   
   const texto = solicitacao.toLowerCase();
   
-  // Detectar perguntas não relacionadas ao trabalho/conteúdo
-  const perguntasGenericas = [
-    'quem é', 'o que é', 'quando', 'onde', 'como funciona', 'qual é',
-    'presidente', 'política', 'governo', 'eleição', 'notícia', 'news',
-    'clima', 'tempo', 'hora', 'data', 'matemática', 'história',
-    'geografia', 'ciência', 'medicina geral', 'receita', 'piada'
-  ];
-  
-  const ePerguntaGenerica = perguntasGenericas.some(palavra => texto.includes(palavra));
-  
-  if (ePerguntaGenerica && !texto.includes('texto') && !texto.includes('legenda') && !texto.includes('story')) {
-    return {
-      precisaPerguntas: false,
-      tipo: 'pergunta_generica'
-    };
-  }
-  
   // Detectar se a solicitação é muito genérica (precisa de perguntas)
   const palavrasGenericas = [
     'texto', 'ideia', 'algo', 'story', 'stories', 'conteudo', 'conteúdo',
@@ -344,27 +327,6 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
   
   // ANALISAR SE PRECISA DE PERGUNTAS DE REFINAMENTO
   const analise = analisarSolicitacao(solicitacao, usuario);
-  
-  // Verificar se é pergunta genérica (não relacionada ao trabalho)
-  if (analise.tipo === 'pergunta_generica') {
-    console.log('❓ Pergunta genérica detectada - redirecionando');
-    
-    return `Oi ${usuario.nome}! 😊
-
-Eu sou o Luke Stories, especialista em criar **textos e ideias** para você gravar e postar em suas redes sociais.
-
-Não estou habilitado para responder outros tipos de perguntas. 
-
-💡 **Mas posso ajudar você com:**
-📱 Textos para stories e posts
-📸 Legendas para suas fotos  
-🎯 Ideias criativas para seu conteúdo
-💼 Conteúdo profissional sobre ${usuario.especialidade}
-
-🤔 **Ou você quer que eu crie um texto com sua opinião profissional** sobre esse assunto relacionado ao seu trabalho como ${usuario.profissao}?
-
-Me diga como posso te ajudar com seu conteúdo! ✨`;
-  }
   
   if (analise.precisaPerguntas) {
     console.log('❓ Solicitação precisa de refinamento');
@@ -557,20 +519,13 @@ Após o pagamento, você receberá acesso imediato! ✨`;
     
     // Verificar se tem imagem pendente para processar
     if (usuario.aguardando_confirmacao_imagem && usuario.imagem_pendente) {
-      console.log('📸 IMAGEM PENDENTE DETECTADA - Processando confirmação...');
-      console.log('📝 Mensagem recebida:', mensagem);
+      console.log('📸 Processando confirmação de imagem...');
       
       const respostaLower = mensagem.toLowerCase();
       
-      // Se NÃO é uma negativa clara, assumir que quer legenda
-      const eNegativa = respostaLower.includes('não') || respostaLower.includes('nao') || 
-                       respostaLower.includes('não precisa') || respostaLower.includes('nao precisa') ||
-                       respostaLower === 'n' || respostaLower === 'não' || respostaLower === 'nao';
-      
-      if (!eNegativa) {
-        // Qualquer resposta que NÃO seja negativa = quer legenda
-        console.log('✅ PROCESSANDO IMAGEM - Usuário quer legenda');
-        console.log('🖼️ URL da imagem:', usuario.imagem_pendente);
+      if (respostaLower.includes('sim') || respostaLower.includes('crie') || respostaLower.includes('legenda')) {
+        // Usuario quer legenda - processar imagem
+        console.log('✅ Usuário confirmou criação de legenda');
         
         // Limpar estado de imagem pendente
         await supabase.from('usuarios')
@@ -581,11 +536,15 @@ Após o pagamento, você receberá acesso imediato! ✨`;
           })
           .eq('telefone', telefone);
         
-        // FORÇAR chamada da função de imagem
-        console.log('🚀 CHAMANDO processarImagem()...');
-        return await processarImagem(usuario.imagem_pendente, telefone, mensagem);
+        // Processar imagem com contexto adicional se especificado
+        let contextoAdicional = '';
+        if (respostaLower.includes('sobre') || respostaLower.includes('legenda sobre')) {
+          contextoAdicional = `\n\nContexto específico solicitado: ${mensagem}`;
+        }
+        
+        return await processarImagem(usuario.imagem_pendente, telefone, contextoAdicional);
       } 
-      else {
+      else if (respostaLower.includes('não') || respostaLower.includes('nao') || respostaLower.includes('não precisa')) {
         // Usuario não quer legenda
         console.log('❌ Usuário não quer legenda');
         
@@ -608,6 +567,17 @@ Sua foto foi ignorada.
 📸 Legendas para fotos (quando quiser)
 
 O que gostaria de criar hoje? ✨`;
+      }
+      else {
+        // Resposta não clara - pedir confirmação novamente
+        return `Não entendi bem sua resposta! 😅
+
+📸 **Para sua foto, você quer:**
+✅ *"Sim, crie uma legenda"* 
+❌ *"Não precisa"*
+🎯 *"Quero legenda sobre [assunto específico]"*
+
+Me diga claramente o que prefere! 😊`;
       }
     }
     
@@ -816,56 +786,8 @@ function extrairProfissaoEspecialidade(mensagem) {
   };
 }
 
-// Função auxiliar para criar legenda baseada no contexto quando GPT recusa imagem
-function criarLegendaDoContexto(usuario, contexto) {
-  const contextoLower = contexto.toLowerCase();
-  
-  // Detectar tipo de procedimento/serviço
-  let procedimento = '';
-  let cliente = '';
-  
-  // Extrair nome do cliente se mencionado
-  const matchCliente = contexto.match(/cliente\s+(\w+)/i);
-  if (matchCliente) {
-    cliente = matchCliente[1];
-  }
-  
-  // Detectar procedimentos
-  if (contextoLower.includes('preenchimento labial') || contextoLower.includes('lábio')) {
-    procedimento = 'preenchimento labial';
-  } else if (contextoLower.includes('botox')) {
-    procedimento = 'aplicação de botox';
-  } else if (contextoLower.includes('clareamento')) {
-    procedimento = 'clareamento dental';
-  } else if (contextoLower.includes('harmonização')) {
-    procedimento = 'harmonização facial';
-  } else {
-    procedimento = `trabalho em ${usuario.especialidade}`;
-  }
-  
-  // Criar legenda personalizada
-  let legenda = '';
-  
-  if (cliente) {
-    legenda = `Mais um resultado incrível! ✨ Fiz ${procedimento} na ${cliente} e o resultado ficou maravilhoso! `;
-  } else {
-    legenda = `Resultado incrível de hoje! ✨ ${procedimento.charAt(0).toUpperCase() + procedimento.slice(1)} que fala por si só! `;
-  }
-  
-  // Adicionar call-to-action baseado na profissão
-  if (usuario.profissao.toLowerCase().includes('dentista')) {
-    legenda += `Um sorriso transformado com técnica e cuidado. Agende sua avaliação! 😊`;
-  } else if (usuario.profissao.toLowerCase().includes('esteticista')) {
-    legenda += `Realçar a beleza natural é minha especialidade. Vem conversar comigo! 💖`;
-  } else {
-    legenda += `Qualidade e cuidado em cada atendimento. Entre em contato! 💪`;
-  }
-  
-  return legenda;
-}
-
 // Função para processar imagem com GPT-4 Vision
-async function processarImagem(imageUrl, telefone, contextoAdicional = '') {
+async function processarImagem(imageUrl, telefone) {
   try {
     console.log('📸 Baixando imagem:', imageUrl);
     console.log('🕐 Início download:', new Date().toISOString());
@@ -930,7 +852,7 @@ FORMATO DA RESPOSTA:
 Responda APENAS com o JSON válido.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4-vision-preview",
       messages: [
         {
           role: "user",
@@ -954,43 +876,7 @@ Responda APENAS com o JSON válido.`;
     console.log('🕐 Fim Vision:', new Date().toISOString());
     console.log('✅ Análise da imagem concluída');
 
-    // Limpar resposta para garantir JSON válido
-    let respostaLimpa = completion.choices[0].message.content.trim();
-    
-    // Remover ```json e ``` se existirem
-    if (respostaLimpa.startsWith('```json')) {
-      respostaLimpa = respostaLimpa.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    }
-    if (respostaLimpa.startsWith('```')) {
-      respostaLimpa = respostaLimpa.replace(/^```\s*/, '').replace(/\s*```$/, '');
-    }
-    
-    console.log('🔧 Resposta limpa para parse:', respostaLimpa.substring(0, 100) + '...');
-
-    // Verificar se GPT recusou analisar a imagem
-    if (respostaLimpa.toLowerCase().includes("i'm sorry") || 
-        respostaLimpa.toLowerCase().includes("i can't") ||
-        respostaLimpa.toLowerCase().includes("sorry") ||
-        !respostaLimpa.startsWith('{')) {
-      
-      console.log('❌ GPT recusou analisar imagem - criando legenda baseada no contexto');
-      
-      // Criar legenda baseada no contexto fornecido pelo usuário
-      const legenda = criarLegendaDoContexto(usuario, contextoAdicional);
-      
-      return `📸 **LEGENDA PARA SUA FOTO:**
-
-"${legenda}"
-
----
-📋 *Para copiar:* Mantenha pressionado o texto acima
-
-💡 *Legenda criada com base nas informações que você forneceu*
-
-✨ *Precisa de ajustes na legenda? Só me falar!* ✨`;
-    }
-
-    const resultado = JSON.parse(respostaLimpa);
+    const resultado = JSON.parse(completion.choices[0].message.content);
     
     // Salvar interação no histórico
     await supabase.from('conversas').insert({
@@ -1010,9 +896,15 @@ Responda APENAS com o JSON válido.`;
       });
     }
     
-    return `📸 **LEGENDA PARA SUA FOTO:**
+    return `📸 **LEGENDA CRIADA PARA SUA FOTO:**
 
 "${resultado.legenda_para_postar}"
+
+📱 **DICAS DE POSTAGEM:**
+${resultado.dicas_posting}
+
+💡 **OBSERVAÇÕES:**
+${resultado.observacoes}
 
 ---
 📋 *Para copiar:* Mantenha pressionado o texto acima
