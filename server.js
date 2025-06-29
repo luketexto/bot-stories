@@ -85,12 +85,37 @@ function analisarSolicitacao(solicitacao, usuario) {
   };
 }
 
-// SISTEMA DE PERGUNTAS INTELIGENTES
-function gerarPerguntasRefinamento(usuario) {
+// SISTEMA DE PERGUNTAS INTELIGENTES - VERSÃO MELHORADA
+function gerarPerguntasRefinamento(usuario, solicitacao) {
   console.log('❓ Gerando perguntas de refinamento...');
   
   const profissao = usuario.profissao.toLowerCase();
   
+  // Verificar se é solicitação após algumas horas (perguntas extras)
+  const agora = new Date();
+  const ultimaInteracao = usuario.updated_at ? new Date(usuario.updated_at) : new Date();
+  const horasDesdeUltimaInteracao = (agora - ultimaInteracao) / (1000 * 60 * 60);
+  
+  if (horasDesdeUltimaInteracao >= 2) {
+    // Perguntas mais detalhadas após algumas horas
+    return `Ótima ideia, ${usuario.nome}! 🎯
+
+Para criar o texto perfeito para você, me ajuda com algumas informações:
+
+🎭 **Tom do texto:** Você quer algo mais animado, motivacional, sério ou descontraído?
+
+📍 **Local:** Vai gravar em casa, no ${getProfessionalLocation(profissao)} ou em outro lugar?
+
+👥 **Seus seguidores:** Como costuma chamá-los? (Ex: pessoal, galera, amigos, família, ${getProfessionalAudience(profissao)}) Ou prefere não usar um termo específico?
+
+🎯 **Foco:** Quer destacar algum ${getServiceType(profissao)} específico ou algo mais geral sobre ${usuario.especialidade}?
+
+⏰ **Horário:** É para gravar agora ou em outro momento do dia?
+
+💬 *Pode responder tudo junto ou uma por vez!* 😊`;
+  }
+  
+  // Perguntas básicas para primeira vez ou interações recentes
   return `Ótima ideia, ${usuario.nome}! 🎯
 
 Para criar o texto perfeito para você, me ajuda com algumas informações:
@@ -159,7 +184,7 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
       .eq('telefone', usuario.telefone);
     
     // Retornar perguntas de refinamento
-    return gerarPerguntasRefinamento(usuario);
+    return gerarPerguntasRefinamento(usuario, solicitacao);
   }
   
   // VERIFICAR SE É RESPOSTA DE REFINAMENTO
@@ -713,6 +738,37 @@ app.post('/webhook/zapi', async (req, res) => {
       
       let mensagem = '';
       let resposta = '';
+      
+      // Verificar tipo de mídia recebida
+      if (webhook.image || webhook.video || webhook.document || webhook.sticker) {
+        console.log('📸 Mídia não suportada recebida');
+        
+        // Resposta educada para mídias não suportadas
+        resposta = `Oi! 😊
+
+Infelizmente, não consigo processar vídeos, fotos ou documentos. 
+
+✅ **Posso ajudar com:**
+🗣️ Mensagens de texto
+🎤 Mensagens de áudio
+
+💬 *Mande sua solicitação por texto ou áudio que eu crio um texto incrível para você!* ✨`;
+
+        // Enviar resposta
+        const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+        
+        await axios.post(`${ZAPI_URL}/send-text`, {
+          phone: telefone,
+          message: resposta
+        }, {
+          headers: {
+            'Client-Token': process.env.ZAPI_CLIENT_TOKEN
+          }
+        });
+        
+        console.log('✅ Resposta sobre mídia não suportada enviada');
+        return res.status(200).json({ status: 'media_not_supported' });
+      }
       
       // Verificar se é áudio ou texto
       if (webhook.audio?.audioUrl) {
