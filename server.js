@@ -868,7 +868,7 @@ IMPORTANTE: Retorne APENAS a legenda pronta para postar, sem explicações extra
 Responda APENAS com a legenda, sem JSON ou formatação especial.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-vision-preview",
+      model: "gpt-4o",
       messages: [
         {
           role: "user",
