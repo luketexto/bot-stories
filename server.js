@@ -311,7 +311,152 @@ function extrairProfissaoEspecialidade(mensagem) {
   };
 }
 
-// Função para gerar texto personalizado
+// SISTEMA INTELIGENTE - Analisar solicitação e decidir se precisa de perguntas
+function analisarSolicitacao(solicitacao, usuario) {
+  console.log('🧠 Analisando solicitação:', solicitacao);
+  
+  const texto = solicitacao.toLowerCase();
+  
+  // Detectar se a solicitação é muito genérica (precisa de perguntas)
+  const palavrasGenericas = [
+    'texto', 'ideia', 'algo', 'story', 'stories', 'conteudo', 'conteúdo',
+    'gravar', 'falar', 'postar', 'publicar', 'manhã', 'tarde', 'noite',
+    'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo',
+    'hoje', 'agora', 'criativo', 'legal', 'bacana'
+  ];
+  
+  const temGenerico = palavrasGenericas.some(palavra => texto.includes(palavra));
+  
+  // Detectar se já tem contexto específico
+  const temContextoEspecifico = 
+    texto.includes('animado') || texto.includes('sério') || texto.includes('motivacional') ||
+    texto.includes('call to action') || texto.includes('chamada') ||
+    texto.includes('dica') || texto.includes('tutorial') ||
+    texto.includes('promocional') || texto.includes('desconto') ||
+    texto.length > 80; // Textos longos geralmente têm mais contexto
+  
+  // Detectar assunto específico mencionado
+  const temAssuntoEspecifico = 
+    /(sobre|falar sobre|tema|assunto|tópico)\s+(.+)/i.test(texto) ||
+    texto.includes('água') || texto.includes('açúcar') || texto.includes('cabelo') ||
+    texto.includes('corte') || texto.includes('saúde') || texto.includes('nutrição');
+  
+  console.log(`📊 Análise: genérico=${temGenerico}, específico=${temContextoEspecifico}, assunto=${temAssuntoEspecifico}`);
+  
+  // Decidir se precisa de perguntas
+  if (temGenerico && !temContextoEspecifico) {
+    return {
+      precisaPerguntas: true,
+      tipo: 'generico',
+      assuntoEspecifico: temAssuntoEspecifico
+    };
+  }
+  
+  if (temAssuntoEspecifico && !temContextoEspecifico) {
+    return {
+      precisaPerguntas: true,
+      tipo: 'assunto_especifico',
+      assuntoEspecifico: true
+    };
+  }
+  
+  return {
+    precisaPerguntas: false,
+    tipo: 'completo'
+  };
+}
+
+// SISTEMA DE PERGUNTAS INTELIGENTES
+function gerarPerguntasRefinamento(analise, usuario, solicitacao) {
+  console.log('❓ Gerando perguntas de refinamento...');
+  
+  const profissao = usuario.profissao.toLowerCase();
+  const especialidade = usuario.especialidade.toLowerCase();
+  
+  if (analise.tipo === 'generico') {
+    // Solicitação muito genérica - perguntas básicas
+    return `Ótima ideia, ${usuario.nome}! 🎯
+
+Para criar o texto perfeito para você, me ajuda com algumas informações:
+
+🎭 **Tom do texto:** Você quer algo mais animado, motivacional, sério ou descontraído?
+
+📍 **Local:** Vai gravar em casa, no ${getProfessionalLocation(profissao)} ou em outro lugar?
+
+🎯 **Foco:** Quer destacar algum ${getServiceType(profissao)} específico ou algo mais geral sobre ${especialidade}?
+
+💬 *Pode responder tudo junto ou uma por vez!* 😊`;
+  }
+  
+  if (analise.tipo === 'assunto_especifico') {
+    // Tem assunto mas falta personalização
+    return `Adorei o tema! Vou criar algo criativo para você! ✨
+
+Só me ajuda a personalizar melhor:
+
+👥 **Seus seguidores:** Como você costuma chamá-los? (Ex: pessoal, galera, queridos, ${getProfessionalAudience(profissao)})
+
+🎯 **Finalização:** Quer que eu termine com alguma chamada para ação ou deixo mais informativo?
+
+📱 **Estilo:** Prefere algo mais educativo, descontraído ou motivacional?
+
+💬 *Responde como preferir que eu crio algo incrível!* 🚀`;
+  }
+  
+  return '';
+}
+
+// Funções auxiliares para personalização por profissão
+function getProfessionalLocation(profissao) {
+  const locais = {
+    'barbeiro': 'barbearia',
+    'cabeleireiro': 'salão',
+    'dentista': 'consultório',
+    'médico': 'consultório',
+    'nutricionista': 'consultório',
+    'advogado': 'escritório',
+    'psicólogo': 'consultório',
+    'esteticista': 'clínica',
+    'mecânico': 'oficina',
+    'professor': 'escola'
+  };
+  
+  return locais[profissao] || 'local de trabalho';
+}
+
+function getServiceType(profissao) {
+  const servicos = {
+    'barbeiro': 'corte ou serviço',
+    'cabeleireiro': 'procedimento',
+    'dentista': 'tratamento',
+    'médico': 'tratamento',
+    'nutricionista': 'orientação nutricional',
+    'advogado': 'área jurídica',
+    'psicólogo': 'abordagem terapêutica',
+    'esteticista': 'procedimento estético',
+    'mecânico': 'serviço automotivo',
+    'professor': 'matéria'
+  };
+  
+  return servicos[profissao] || 'serviço';
+}
+
+function getProfessionalAudience(profissao) {
+  const audiencias = {
+    'barbeiro': 'clientes',
+    'cabeleireiro': 'clientes',
+    'dentista': 'pacientes',
+    'médico': 'pacientes',
+    'nutricionista': 'pacientes',
+    'advogado': 'clientes',
+    'psicólogo': 'pacientes',
+    'esteticista': 'clientes',
+    'mecânico': 'clientes',
+    'professor': 'alunos'
+  };
+  
+  return audiencias[profissao] || 'seguidores';
+}
 async function gerarTextoPersonalizado(usuario, solicitacao) {
   console.log(`🎯 Gerando texto para ${usuario.nome}: ${solicitacao}`);
   
