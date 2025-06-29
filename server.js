@@ -1176,6 +1176,35 @@ app.post('/webhook/zapi', async (req, res) => {
         console.log('📸 IMAGEM RECEBIDA!');
         console.log('📸 URL:', webhook.image.imageUrl);
         
+        // PRIMEIRO: Buscar usuário
+        const usuario = await buscarUsuario(telefone);
+        
+        if (!usuario || usuario.status !== 'pago') {
+          resposta = `🔒 *Acesso restrito!*
+
+Para usar o Luke Stories, você precisa adquirir o acesso primeiro.
+
+💳 *Faça seu pagamento em:* 
+https://payment.ticto.app/O6D37000C
+
+Após o pagamento, você receberá acesso imediato! ✨`;
+
+          // Enviar resposta
+          const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+          
+          await axios.post(`${ZAPI_URL}/send-text`, {
+            phone: telefone,
+            message: resposta
+          }, {
+            headers: {
+              'Client-Token': process.env.ZAPI_CLIENT_TOKEN
+            }
+          });
+          
+          console.log('✅ Resposta de acesso restrito enviada');
+          return res.status(200).json({ status: 'access_denied' });
+        }
+        
         // Perguntar se quer criar legenda
         resposta = `📸 **Foto recebida!**
 
@@ -1186,20 +1215,18 @@ Você gostaria que eu criasse uma **legenda personalizada** para essa foto?
 🎯 *"Quero legenda sobre [assunto específico]"* - para foco personalizado
 ❌ *"Não precisa"* - se não quer legenda
 
-Como ${usuario?.profissao || 'profissional'}, posso criar uma legenda perfeita para seu público! ✨
+Como ${usuario.profissao}, posso criar uma legenda perfeita para seu público! ✨
 
 O que prefere? 😊`;
 
         // Salvar URL da imagem temporariamente no usuário
-        if (usuario) {
-          await supabase.from('usuarios')
-            .update({ 
-              imagem_pendente: webhook.image.imageUrl,
-              aguardando_confirmacao_imagem: true,
-              updated_at: new Date()
-            })
-            .eq('telefone', telefone);
-        }
+        await supabase.from('usuarios')
+          .update({ 
+            imagem_pendente: webhook.image.imageUrl,
+            aguardando_confirmacao_imagem: true,
+            updated_at: new Date()
+          })
+          .eq('telefone', telefone);
 
         // Enviar resposta
         const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
