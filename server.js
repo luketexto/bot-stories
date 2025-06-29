@@ -202,8 +202,90 @@ async function buscarUsuario(telefone) {
   }
 }
 
+// NOVA FUNÇÃO - Analisar se é ajuste de legenda ou texto novo
+function analisarSeEhAjusteLegenda(mensagem, usuario) {
+  console.log('🧠 Analisando se é ajuste de legenda:', mensagem);
+  
+  const texto = mensagem.toLowerCase();
+  
+  // Se não tem modo legenda ativo, definitivamente é texto novo
+  if (!usuario.modo_legenda_ativo || !usuario.ultima_legenda_gerada) {
+    return 'texto_novo';
+  }
+  
+  // Verificar se faz mais de 10 minutos que gerou a legenda (timeout)
+  if (usuario.timestamp_legenda) {
+    const agora = new Date();
+    const timestampLegenda = new Date(usuario.timestamp_legenda);
+    const minutosDesdeUltimaLegenda = (agora - timestampLegenda) / (1000 * 60);
+    
+    if (minutosDesdeUltimaLegenda > 10) {
+      console.log('⏰ Timeout do modo legenda (>10 min)');
+      return 'texto_novo';
+    }
+  }
+  
+  // Indicadores claros de que quer texto novo para gravar
+  const indicadoresTextoNovo = [
+    'texto para gravar', 'gravar um video', 'gravar um story', 'story novo', 'novo texto',
+    'agora quero', 'preciso de um texto', 'quero gravar', 'me ajuda com um texto',
+    'story animado', 'texto motivacional', 'gravar em casa', 'gravar no trabalho'
+  ];
+  
+  const querTextoNovo = indicadoresTextoNovo.some(indicador => texto.includes(indicador));
+  
+  if (querTextoNovo) {
+    console.log('✅ Detectado: quer texto novo para gravar');
+    return 'texto_novo';
+  }
+  
+  // Se chegou até aqui e está no modo legenda, provavelmente é ajuste
+  console.log('✅ Detectado: ajuste de legenda');
+  return 'ajuste_legenda';
+}
+
 // SISTEMA INTELIGENTE - Analisar solicitação e decidir se precisa de perguntas
 function analisarSolicitacao(solicitacao, usuario) {
+function analisarSeEhAjusteLegenda(mensagem, usuario) {
+  console.log('🧠 Analisando se é ajuste de legenda:', mensagem);
+  
+  const texto = mensagem.toLowerCase();
+  
+  // Se não tem modo legenda ativo, definitivamente é texto novo
+  if (!usuario.modo_legenda_ativo || !usuario.ultima_legenda_gerada) {
+    return 'texto_novo';
+  }
+  
+  // Verificar se faz mais de 10 minutos que gerou a legenda (timeout)
+  if (usuario.timestamp_legenda) {
+    const agora = new Date();
+    const timestampLegenda = new Date(usuario.timestamp_legenda);
+    const minutosDesdeUltimaLegenda = (agora - timestampLegenda) / (1000 * 60);
+    
+    if (minutosDesdeUltimaLegenda > 10) {
+      console.log('⏰ Timeout do modo legenda (>10 min)');
+      return 'texto_novo';
+    }
+  }
+  
+  // Indicadores claros de que quer texto novo para gravar
+  const indicadoresTextoNovo = [
+    'texto para gravar', 'gravar um video', 'gravar um story', 'story novo', 'novo texto',
+    'agora quero', 'preciso de um texto', 'quero gravar', 'me ajuda com um texto',
+    'story animado', 'texto motivacional', 'gravar em casa', 'gravar no trabalho'
+  ];
+  
+  const querTextoNovo = indicadoresTextoNovo.some(indicador => texto.includes(indicador));
+  
+  if (querTextoNovo) {
+    console.log('✅ Detectado: quer texto novo para gravar');
+    return 'texto_novo';
+  }
+  
+  // Se chegou até aqui e está no modo legenda, provavelmente é ajuste
+  console.log('✅ Detectado: ajuste de legenda');
+  return 'ajuste_legenda';
+}
   console.log('🧠 Analisando solicitação:', solicitacao);
   
   const texto = solicitacao.toLowerCase();
@@ -600,6 +682,38 @@ Me diga claramente o que prefere! 😊`;
       }
     }
     
+    // NOVO: Verificar se está no modo legenda e analisar intenção
+    if (usuario.modo_legenda_ativo && usuario.ultima_legenda_gerada) {
+      console.log('📸 Usuário está no modo legenda, analisando intenção...');
+      
+      const tipoSolicitacao = analisarSeEhAjusteLegenda(mensagem, usuario);
+      
+      if (tipoSolicitacao === 'ajuste_legenda') {
+        console.log('✅ Detectado: ajuste de legenda');
+        
+        // Processar ajuste de legenda (sem imagem, mas com contexto da legenda anterior)
+        const contextoAjuste = `Legenda anterior gerada: "${usuario.ultima_legenda_gerada}"
+
+Solicitação de ajuste: ${mensagem}`;
+        
+        return await processarAjusteLegenda(usuario, contextoAjuste, telefone);
+      } else {
+        console.log('✅ Detectado: quer texto novo para gravar');
+        
+        // Limpar modo legenda e processar como texto normal
+        await supabase.from('usuarios')
+          .update({ 
+            modo_legenda_ativo: false,
+            ultima_legenda_gerada: null,
+            timestamp_legenda: null,
+            updated_at: new Date()
+          })
+          .eq('telefone', telefone);
+        
+        // Continuar para geração de texto normal
+      }
+    }
+    
     // Verificar se quer alterar informações
     if (mensagem.toLowerCase().includes('alterar') || mensagem.toLowerCase().includes('mudar') || mensagem.toLowerCase().includes('trocar')) {
       return `Oi ${usuario.nome}! 😊
@@ -912,6 +1026,18 @@ Responda APENAS com a legenda, sem JSON ou formatação especial.`;
       });
     }
     
+    // ATIVAR MODO LEGENDA após gerar legenda
+    await supabase.from('usuarios')
+      .update({ 
+        modo_legenda_ativo: true,
+        ultima_legenda_gerada: legenda,
+        timestamp_legenda: new Date(),
+        updated_at: new Date()
+      })
+      .eq('telefone', telefone);
+    
+    console.log('✅ Modo legenda ativado para ajustes futuros');
+    
     // RETORNO ESPECÍFICO PARA LEGENDA - MAIS LIMPO
     return `📸 **LEGENDA PARA ESSA IMAGEM:**
 
@@ -935,6 +1061,103 @@ Responda APENAS com a legenda, sem JSON ou formatação especial.`;
 💡 **Pode tentar:**
 🔄 Enviar a imagem novamente
 📝 Ou me contar o que tem na foto que eu crio uma legenda
+
+✨ *Estou aqui para ajudar!* ✨`;
+  }
+}
+
+// NOVA FUNÇÃO - Processar ajuste de legenda
+async function processarAjusteLegenda(usuario, contextoAjuste, telefone) {
+  try {
+    console.log('🔄 Processando ajuste de legenda...');
+    
+    // Buscar preferências para personalizar ajuste
+    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.id);
+    
+    const prompt = `Você é o Luke Stories, especialista em ajustar legendas para ${usuario.profissao}.
+
+DADOS DO USUÁRIO:
+- Nome: ${usuario.nome}
+- Profissão: ${usuario.profissao}
+- Especialidade: ${usuario.especialidade}
+- Empresa: ${usuario.empresa || 'Profissional autônomo'}
+
+${preferencias ? `PREFERÊNCIAS APRENDIDAS:
+- Tom preferido: ${preferencias.tom_preferido || 'equilibrado'}
+- Tamanho: ${preferencias.tamanho_preferido || 'médio'}
+- Call-to-action: ${preferencias.call_to_action || 'sutil'}
+- Forma de chamar seguidores: ${preferencias.forma_chamar_seguidores || 'pessoal'}` : ''}
+
+CONTEXTO DO AJUSTE:
+${contextoAjuste}
+
+INSTRUÇÕES PARA AJUSTE:
+1. Analise a legenda anterior e a solicitação de ajuste
+2. Faça EXATAMENTE o que o usuário pediu (diminuir, aumentar, mudar tom, etc.)
+3. Mantenha a essência da legenda original
+4. Use as preferências do usuário como base
+5. Seja específico para a área de ${usuario.especialidade}
+6. Use linguagem natural e envolvente
+
+IMPORTANTE: Retorne APENAS a legenda ajustada, sem explicações extras.
+
+Responda APENAS com a nova legenda ajustada, sem JSON ou formatação especial.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 300
+    });
+
+    const legendaAjustada = completion.choices[0].message.content.trim();
+    
+    // Salvar interação no histórico
+    await supabase.from('conversas').insert({
+      telefone: usuario.telefone,
+      usuario_id: usuario.id,
+      mensagem_usuario: contextoAjuste,
+      resposta_bot: JSON.stringify({ legenda_ajustada: legendaAjustada }),
+      tipo_mensagem: 'ajuste_legenda',
+      created_at: new Date()
+    });
+    
+    // Atualizar a última legenda gerada com a nova versão
+    await supabase.from('usuarios')
+      .update({ 
+        ultima_legenda_gerada: legendaAjustada,
+        timestamp_legenda: new Date(),
+        updated_at: new Date()
+      })
+      .eq('telefone', telefone);
+    
+    // Atualizar preferências se existir
+    if (preferencias) {
+      await salvarPreferenciasUsuario(telefone, usuario.id, {
+        ...preferencias,
+        ultima_interacao: new Date()
+      });
+    }
+    
+    console.log('✅ Legenda ajustada com sucesso');
+    
+    // RETORNO ESPECÍFICO PARA LEGENDA AJUSTADA
+    return `📸 **LEGENDA PARA ESSA IMAGEM:**
+
+"${legendaAjustada}"
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de mais ajustes? Só me falar!* ✨`;
+
+  } catch (error) {
+    console.error('❌ Erro ao ajustar legenda:', error);
+    
+    return `❌ Ops! Tive um problema ao ajustar sua legenda.
+
+💡 **Pode tentar:**
+🔄 Falar de outra forma o ajuste que quer
+📝 Ou me contar exatamente como quer a legenda
 
 ✨ *Estou aqui para ajudar!* ✨`;
   }
