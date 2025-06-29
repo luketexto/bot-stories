@@ -561,9 +561,14 @@ Após o pagamento, você receberá acesso imediato! ✨`;
       
       const respostaLower = mensagem.toLowerCase();
       
-      if (respostaLower.includes('sim') || respostaLower.includes('crie') || respostaLower.includes('legenda')) {
-        // Usuario quer legenda - processar imagem
-        console.log('✅ Usuário confirmou criação de legenda');
+      // Se NÃO é uma negativa clara, assumir que quer legenda
+      const eNegativa = respostaLower.includes('não') || respostaLower.includes('nao') || 
+                       respostaLower.includes('não precisa') || respostaLower.includes('nao precisa') ||
+                       respostaLower === 'n' || respostaLower === 'não' || respostaLower === 'nao';
+      
+      if (!eNegativa) {
+        // Qualquer resposta que NÃO seja negativa = quer legenda
+        console.log('✅ Usuário quer legenda (resposta não-negativa)');
         
         // Limpar estado de imagem pendente
         await supabase.from('usuarios')
@@ -574,15 +579,10 @@ Após o pagamento, você receberá acesso imediato! ✨`;
           })
           .eq('telefone', telefone);
         
-        // Processar imagem com contexto adicional se especificado
-        let contextoAdicional = '';
-        if (respostaLower.includes('sobre') || respostaLower.includes('legenda sobre')) {
-          contextoAdicional = `\n\nContexto específico solicitado: ${mensagem}`;
-        }
-        
-        return await processarImagem(usuario.imagem_pendente, telefone, contextoAdicional);
+        // Processar imagem com contexto adicional
+        return await processarImagem(usuario.imagem_pendente, telefone, mensagem);
       } 
-      else if (respostaLower.includes('não') || respostaLower.includes('nao') || respostaLower.includes('não precisa')) {
+      else {
         // Usuario não quer legenda
         console.log('❌ Usuário não quer legenda');
         
@@ -605,17 +605,6 @@ Sua foto foi ignorada.
 📸 Legendas para fotos (quando quiser)
 
 O que gostaria de criar hoje? ✨`;
-      }
-      else {
-        // Resposta não clara - pedir confirmação novamente
-        return `Não entendi bem sua resposta! 😅
-
-📸 **Para sua foto, você quer:**
-✅ *"Sim, crie uma legenda"* 
-❌ *"Não precisa"*
-🎯 *"Quero legenda sobre [assunto específico]"*
-
-Me diga claramente o que prefere! 😊`;
       }
     }
     
@@ -934,15 +923,9 @@ Responda APENAS com o JSON válido.`;
       });
     }
     
-        return `📸 **LEGENDA CRIADA PARA SUA FOTO:**
+    return `📸 **LEGENDA PARA SUA FOTO:**
 
 "${resultado.legenda_para_postar}"
-
-📱 **DICAS DE POSTAGEM:**
-${resultado.dicas_posting}
-
-💡 **OBSERVAÇÕES:**
-${resultado.observacoes}
 
 ---
 📋 *Para copiar:* Mantenha pressionado o texto acima
