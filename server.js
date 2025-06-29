@@ -557,7 +557,8 @@ Após o pagamento, você receberá acesso imediato! ✨`;
     
     // Verificar se tem imagem pendente para processar
     if (usuario.aguardando_confirmacao_imagem && usuario.imagem_pendente) {
-      console.log('📸 Processando confirmação de imagem...');
+      console.log('📸 IMAGEM PENDENTE DETECTADA - Processando confirmação...');
+      console.log('📝 Mensagem recebida:', mensagem);
       
       const respostaLower = mensagem.toLowerCase();
       
@@ -568,7 +569,8 @@ Após o pagamento, você receberá acesso imediato! ✨`;
       
       if (!eNegativa) {
         // Qualquer resposta que NÃO seja negativa = quer legenda
-        console.log('✅ Usuário quer legenda (resposta não-negativa)');
+        console.log('✅ PROCESSANDO IMAGEM - Usuário quer legenda');
+        console.log('🖼️ URL da imagem:', usuario.imagem_pendente);
         
         // Limpar estado de imagem pendente
         await supabase.from('usuarios')
@@ -579,7 +581,8 @@ Após o pagamento, você receberá acesso imediato! ✨`;
           })
           .eq('telefone', telefone);
         
-        // Processar imagem com contexto adicional
+        // FORÇAR chamada da função de imagem
+        console.log('🚀 CHAMANDO processarImagem()...');
         return await processarImagem(usuario.imagem_pendente, telefone, mensagem);
       } 
       else {
