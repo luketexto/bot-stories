@@ -44,67 +44,226 @@ async function buscarUsuario(telefone) {
   }
 }
 
-// Função para salvar usuário no banco
-async function salvarUsuario(telefone, nome, profissao, especialidade) {
-  try {
-    const { data, error } = await supabase
-      .from('usuarios')
-      .insert({
-        telefone: telefone,
-        nome: nome,
-        profissao: profissao,
-        especialidade: especialidade,
-        status: 'ativo',
-        created_at: new Date()
-      })
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('❌ Erro ao salvar usuário:', error);
-      return null;
-    }
-    
-    console.log('✅ Usuário salvo:', data);
-    return data;
-  } catch (error) {
-    console.error('❌ Erro ao salvar usuário:', error);
-    return null;
+// SISTEMA INTELIGENTE - Analisar solicitação e decidir se precisa de perguntas
+function analisarSolicitacao(solicitacao, usuario) {
+  console.log('🧠 Analisando solicitação:', solicitacao);
+  
+  const texto = solicitacao.toLowerCase();
+  
+  // Detectar se a solicitação é muito genérica (precisa de perguntas)
+  const palavrasGenericas = [
+    'texto', 'ideia', 'algo', 'story', 'stories', 'conteudo', 'conteúdo',
+    'gravar', 'falar', 'postar', 'publicar', 'manhã', 'tarde', 'noite',
+    'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo',
+    'hoje', 'agora', 'criativo', 'legal', 'bacana', 'curta', 'rápida',
+    'rapidinho', 'simples', 'manda'
+  ];
+  
+  const temGenerico = palavrasGenericas.some(palavra => texto.includes(palavra));
+  
+  // Detectar se já tem contexto específico
+  const temContextoEspecifico = 
+    texto.includes('animado') || texto.includes('sério') || texto.includes('motivacional') ||
+    texto.includes('call to action') || texto.includes('chamada') ||
+    texto.includes('dica') || texto.includes('tutorial') ||
+    texto.includes('promocional') || texto.includes('desconto') ||
+    texto.length > 100; // Textos longos geralmente têm mais contexto
+  
+  console.log(`📊 Análise: genérico=${temGenerico}, específico=${temContextoEspecifico}`);
+  
+  // Decidir se precisa de perguntas
+  if (temGenerico && !temContextoEspecifico) {
+    return {
+      precisaPerguntas: true,
+      tipo: 'generico'
+    };
   }
+  
+  return {
+    precisaPerguntas: false,
+    tipo: 'completo'
+  };
 }
 
-// Função para extrair dados de forma mais flexível
-function extrairDadosCompletos(mensagem) {
-  console.log('🔍 Tentando extrair dados de:', mensagem);
+// SISTEMA DE PERGUNTAS INTELIGENTES
+function gerarPerguntasRefinamento(usuario) {
+  console.log('❓ Gerando perguntas de refinamento...');
   
-  // Buscar padrões mais específicos para nome
-  const regexNomeCompleto = /(?:me chamo|meu nome é|sou )?([A-Za-zÀ-ÿ\s]{2,20})(?:\s+e\s+sou|\s+sou|\s*,)/i;
-  const matchCompleto = mensagem.match(regexNomeCompleto);
+  const profissao = usuario.profissao.toLowerCase();
   
-  if (matchCompleto) {
-    console.log('✅ Nome e profissão encontrados:', matchCompleto[1]);
-    return {
-      nome: matchCompleto[1].trim(),
-      temNome: true,
-      temProfissao: true,
-      profissao: mensagem.replace(regexNomeCompleto, '').replace(/sou\s*/i, '').trim()
-    };
+  return `Ótima ideia, ${usuario.nome}! 🎯
+
+Para criar o texto perfeito para você, me ajuda com algumas informações:
+
+🎭 **Tom do texto:** Você quer algo mais animado, motivacional, sério ou descontraído?
+
+📍 **Local:** Vai gravar em casa, no ${getProfessionalLocation(profissao)} ou em outro lugar?
+
+🎯 **Foco:** Quer destacar algum ${getServiceType(profissao)} específico ou algo mais geral sobre ${usuario.especialidade}?
+
+💬 *Pode responder tudo junto ou uma por vez!* 😊`;
+}
+
+// Funções auxiliares para personalização por profissão
+function getProfessionalLocation(profissao) {
+  const locais = {
+    'barbeiro': 'barbearia',
+    'cabeleireiro': 'salão',
+    'dentista': 'consultório',
+    'médico': 'consultório',
+    'nutricionista': 'consultório',
+    'advogado': 'escritório',
+    'psicólogo': 'consultório',
+    'esteticista': 'clínica',
+    'mecânico': 'oficina',
+    'professor': 'escola'
+  };
+  
+  return locais[profissao] || 'local de trabalho';
+}
+
+function getServiceType(profissao) {
+  const servicos = {
+    'barbeiro': 'corte ou serviço',
+    'cabeleireiro': 'procedimento',
+    'dentista': 'tratamento',
+    'médico': 'tratamento',
+    'nutricionista': 'orientação nutricional',
+    'advogado': 'área jurídica',
+    'psicólogo': 'abordagem terapêutica',
+    'esteticista': 'procedimento estético',
+    'mecânico': 'serviço automotivo',
+    'professor': 'matéria'
+  };
+  
+  return servicos[profissao] || 'serviço';
+}
+
+// FUNÇÃO PRINCIPAL - Gerar texto personalizado COM SISTEMA INTELIGENTE
+async function gerarTextoPersonalizado(usuario, solicitacao) {
+  console.log(`🎯 Gerando texto para ${usuario.nome}: ${solicitacao}`);
+  
+  // ANALISAR SE PRECISA DE PERGUNTAS DE REFINAMENTO
+  const analise = analisarSolicitacao(solicitacao, usuario);
+  
+  if (analise.precisaPerguntas) {
+    console.log('❓ Solicitação precisa de refinamento');
+    
+    // Salvar estado de "aguardando refinamento"
+    await supabase.from('usuarios')
+      .update({ 
+        aguardando_refinamento: true,
+        solicitacao_pendente: solicitacao,
+        updated_at: new Date()
+      })
+      .eq('telefone', usuario.telefone);
+    
+    // Retornar perguntas de refinamento
+    return gerarPerguntasRefinamento(usuario);
   }
   
-  // Buscar só nome simples
-  const regexNome = /(?:me chamo|meu nome é|sou |eu sou )?([A-Za-zÀ-ÿ]{2,20})(?:\s|$|,|\.)/i;
-  const matchNome = mensagem.match(regexNome);
-  
-  if (matchNome && !mensagem.toLowerCase().includes('sou') && !mensagem.toLowerCase().includes('trabalho')) {
-    console.log('✅ Só nome encontrado:', matchNome[1]);
-    return {
-      nome: matchNome[1].trim(),
-      temNome: true
-    };
+  // VERIFICAR SE É RESPOSTA DE REFINAMENTO
+  if (usuario.aguardando_refinamento && usuario.solicitacao_pendente) {
+    console.log('✅ Processando resposta de refinamento');
+    
+    // Combinar solicitação original + respostas
+    const solicitacaoCompleta = `${usuario.solicitacao_pendente}\n\nInformações adicionais: ${solicitacao}`;
+    
+    // Limpar estado de refinamento
+    await supabase.from('usuarios')
+      .update({ 
+        aguardando_refinamento: false,
+        solicitacao_pendente: null,
+        updated_at: new Date()
+      })
+      .eq('telefone', usuario.telefone);
+    
+    // Gerar texto com informações completas
+    return await criarTextoComIA(usuario, solicitacaoCompleta, true);
   }
   
-  console.log('❌ Nenhum nome claro encontrado');
-  return {};
+  // GERAR TEXTO DIRETO (já tem informações suficientes)
+  console.log('🚀 Gerando texto direto');
+  return await criarTextoComIA(usuario, solicitacao, false);
+}
+
+// FUNÇÃO MELHORADA - Criar texto com IA
+async function criarTextoComIA(usuario, solicitacao, foiRefinado = false) {
+  const prompt = `Você é o Luke Stories, assistente pessoal para criação de textos para stories e conteúdo.
+
+DADOS DO USUÁRIO:
+- Nome: ${usuario.nome}
+- Profissão: ${usuario.profissao}
+- Especialidade: ${usuario.especialidade}
+- Empresa: ${usuario.empresa || 'Profissional autônomo'}
+
+SOLICITAÇÃO${foiRefinado ? ' (COM REFINAMENTO)' : ''}: ${solicitacao}
+
+INSTRUÇÕES AVANÇADAS:
+1. Crie um texto dinâmico e personalizado (máximo 150 palavras)
+2. Use o nome da pessoa de forma natural
+3. Adapte PERFEITAMENTE ao tom solicitado (animado, sério, motivacional, etc.)
+4. Se foi refinado, use TODAS as informações fornecidas pelo usuário
+5. Inclua call-to-action adequado se solicitado
+6. Seja específico da área de especialidade quando relevante
+7. Use linguagem natural e conversacional
+8. Se for sobre assunto específico, seja criativo e educativo
+
+FORMATO DA RESPOSTA:
+{
+  "texto_para_gravar": "texto que o usuário vai gravar",
+  "dicas_gravacao": "dicas específicas de como gravar (tom, gestos, expressão)",
+  "observacoes": "observações extras sobre o texto criado"
+}
+
+Responda APENAS com o JSON válido.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 500
+    });
+
+    const resultado = JSON.parse(completion.choices[0].message.content);
+    
+    // Salvar interação no histórico
+    await supabase.from('conversas').insert({
+      telefone: usuario.telefone,
+      usuario_id: usuario.id,
+      mensagem_usuario: solicitacao,
+      resposta_bot: JSON.stringify(resultado),
+      tipo_mensagem: foiRefinado ? 'texto_refinado' : 'texto_direto',
+      created_at: new Date()
+    });
+    
+    return `📱 **TEXTO PARA GRAVAR:**
+"${resultado.texto_para_gravar}"
+
+🎭 **DICAS DE GRAVAÇÃO:**
+${resultado.dicas_gravacao}
+
+💡 **OBSERVAÇÕES:**
+${resultado.observacoes}
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de outro texto ou ajustes? Só me falar!* ✨`;
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar texto personalizado:', error);
+    
+    return `📱 **TEXTO PARA GRAVAR:**
+"Oi, eu sou ${usuario.nome}! Como ${usuario.profissao} especialista em ${usuario.especialidade}, estou aqui para te ajudar com o que você precisar. ${usuario.empresa !== 'Profissional autônomo' ? `Aqui na ${usuario.empresa}` : 'No meu trabalho'}, eu faço questão de dar o meu melhor para você. Vem conversar comigo!"
+
+🎭 **DICA:** Grave com energia e sorria!
+
+💡 **OBSERVAÇÃO:** Texto básico gerado por erro no sistema.
+
+---
+✨ *Precisa de outro texto? Só me falar!* ✨`;
+  }
 }
 
 // Sistema de conversa por etapas - VERSÃO LUKE STORIES
@@ -213,7 +372,7 @@ Se não tiver, pode falar "não tenho empresa" 😊`;
     await supabase.from('usuarios')
       .update({ 
         empresa: empresa,
-        status: 'ativo_completo'
+        configuracao_completa: true
       })
       .eq('telefone', telefone);
     
@@ -288,10 +447,10 @@ function extrairProfissaoEspecialidade(mensagem) {
   let profissao = mensagem;
   let especialidade = null;
   
-  // Remover prefixos comuns (mantendo sua lógica)
+  // Remover prefixos comuns
   profissao = profissao.replace(/^(sou |trabalho como |atuo como |me formei em |formado em |especialista em |área de )/i, '');
   
-  // Buscar padrões de especialidade (expandindo sua regex)
+  // Buscar padrões de especialidade
   const regexEspecialidade = /(.*?)(?:,|\s+)(?:especialista em|especialidade em|trabalho com|foco em|área de|focado em|focada em|especializado em|especializada em|que trabalha com)\s+(.+)/i;
   const match = mensagem.match(regexEspecialidade);
   
@@ -309,250 +468,6 @@ function extrairProfissaoEspecialidade(mensagem) {
     profissao: profissao,
     especialidade: especialidade
   };
-}
-
-// SISTEMA INTELIGENTE - Analisar solicitação e decidir se precisa de perguntas
-function analisarSolicitacao(solicitacao, usuario) {
-  console.log('🧠 Analisando solicitação:', solicitacao);
-  
-  const texto = solicitacao.toLowerCase();
-  
-  // Detectar se a solicitação é muito genérica (precisa de perguntas)
-  const palavrasGenericas = [
-    'texto', 'ideia', 'algo', 'story', 'stories', 'conteudo', 'conteúdo',
-    'gravar', 'falar', 'postar', 'publicar', 'manhã', 'tarde', 'noite',
-    'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo',
-    'hoje', 'agora', 'criativo', 'legal', 'bacana', 'curta', 'rápida',
-    'rapidinho', 'simples'
-  ];
-  
-  const temGenerico = palavrasGenericas.some(palavra => texto.includes(palavra));
-  
-  // Detectar se já tem contexto específico
-  const temContextoEspecifico = 
-    texto.includes('animado') || texto.includes('sério') || texto.includes('motivacional') ||
-    texto.includes('call to action') || texto.includes('chamada') ||
-    texto.includes('dica') || texto.includes('tutorial') ||
-    texto.includes('promocional') || texto.includes('desconto') ||
-    texto.length > 80; // Textos longos geralmente têm mais contexto
-  
-  // Detectar assunto específico mencionado
-  const temAssuntoEspecifico = 
-    /(sobre|falar sobre|tema|assunto|tópico)\s+(.+)/i.test(texto) ||
-    texto.includes('água') || texto.includes('açúcar') || texto.includes('cabelo') ||
-    texto.includes('corte') || texto.includes('saúde') || texto.includes('nutrição');
-  
-  console.log(`📊 Análise: genérico=${temGenerico}, específico=${temContextoEspecifico}, assunto=${temAssuntoEspecifico}`);
-  
-  // Decidir se precisa de perguntas
-  if (temGenerico && !temContextoEspecifico) {
-    return {
-      precisaPerguntas: true,
-      tipo: 'generico',
-      assuntoEspecifico: temAssuntoEspecifico
-    };
-  }
-  
-  if (temAssuntoEspecifico && !temContextoEspecifico) {
-    return {
-      precisaPerguntas: true,
-      tipo: 'assunto_especifico',
-      assuntoEspecifico: true
-    };
-  }
-  
-  return {
-    precisaPerguntas: false,
-    tipo: 'completo'
-  };
-}
-
-// SISTEMA DE PERGUNTAS INTELIGENTES
-function gerarPerguntasRefinamento(analise, usuario, solicitacao) {
-  console.log('❓ Gerando perguntas de refinamento...');
-  
-  const profissao = usuario.profissao.toLowerCase();
-  const especialidade = usuario.especialidade.toLowerCase();
-  
-  if (analise.tipo === 'generico') {
-    // Solicitação muito genérica - perguntas básicas
-    return `Ótima ideia, ${usuario.nome}! 🎯
-
-Para criar o texto perfeito para você, me ajuda com algumas informações:
-
-🎭 **Tom do texto:** Você quer algo mais animado, motivacional, sério ou descontraído?
-
-📍 **Local:** Vai gravar em casa, no ${getProfessionalLocation(profissao)} ou em outro lugar?
-
-🎯 **Foco:** Quer destacar algum ${getServiceType(profissao)} específico ou algo mais geral sobre ${especialidade}?
-
-💬 *Pode responder tudo junto ou uma por vez!* 😊`;
-  }
-  
-  if (analise.tipo === 'assunto_especifico') {
-    // Tem assunto mas falta personalização
-    return `Adorei o tema! Vou criar algo criativo para você! ✨
-
-Só me ajuda a personalizar melhor:
-
-👥 **Seus seguidores:** Como você costuma chamá-los? (Ex: pessoal, galera, queridos, ${getProfessionalAudience(profissao)})
-
-🎯 **Finalização:** Quer que eu termine com alguma chamada para ação ou deixo mais informativo?
-
-📱 **Estilo:** Prefere algo mais educativo, descontraído ou motivacional?
-
-💬 *Responde como preferir que eu crio algo incrível!* 🚀`;
-  }
-  
-  return '';
-}
-
-// Funções auxiliares para personalização por profissão
-function getProfessionalLocation(profissao) {
-  const locais = {
-    'barbeiro': 'barbearia',
-    'cabeleireiro': 'salão',
-    'dentista': 'consultório',
-    'médico': 'consultório',
-    'nutricionista': 'consultório',
-    'advogado': 'escritório',
-    'psicólogo': 'consultório',
-    'esteticista': 'clínica',
-    'mecânico': 'oficina',
-    'professor': 'escola'
-  };
-  
-  return locais[profissao] || 'local de trabalho';
-}
-
-function getServiceType(profissao) {
-  const servicos = {
-    'barbeiro': 'corte ou serviço',
-    'cabeleireiro': 'procedimento',
-    'dentista': 'tratamento',
-    'médico': 'tratamento',
-    'nutricionista': 'orientação nutricional',
-    'advogado': 'área jurídica',
-    'psicólogo': 'abordagem terapêutica',
-    'esteticista': 'procedimento estético',
-    'mecânico': 'serviço automotivo',
-    'professor': 'matéria'
-  };
-  
-  return servicos[profissao] || 'serviço';
-}
-
-function getProfessionalAudience(profissao) {
-  const audiencias = {
-    'barbeiro': 'clientes',
-    'cabeleireiro': 'clientes',
-    'dentista': 'pacientes',
-    'médico': 'pacientes',
-    'nutricionista': 'pacientes',
-    'advogado': 'clientes',
-    'psicólogo': 'pacientes',
-    'esteticista': 'clientes',
-    'mecânico': 'clientes',
-    'professor': 'alunos'
-  };
-  
-  return audiencias[profissao] || 'seguidores';
-}
-async function gerarTextoPersonalizado(usuario, solicitacao) {
-  console.log(`🎯 Gerando texto para ${usuario.nome}: ${solicitacao}`);
-  
-  const prompt = `Você é o Luke Stories, assistente pessoal para criação de textos para stories e conteúdo.
-
-DADOS DO USUÁRIO:
-- Nome: ${usuario.nome}
-- Profissão: ${usuario.profissao}
-- Especialidade: ${usuario.especialidade}
-- Empresa: ${usuario.empresa || 'Profissional autônomo'}
-
-SOLICITAÇÃO: ${solicitacao}
-
-INSTRUÇÕES:
-1. Crie um texto curto (máximo 150 palavras) para o usuário gravar
-2. Use o nome da pessoa no texto
-3. Adapte o tom conforme a solicitação (animado, profissional, motivacional, etc.)
-4. Inclua call-to-action sutil relacionado à profissão
-5. Seja natural e conversacional
-6. Se for uma dica, seja específico da área de especialidade
-
-FORMATO DA RESPOSTA:
-{
-  "texto_para_gravar": "texto que o usuário vai gravar",
-  "dicas_gravacao": "dicas de como gravar (tom, gestos, etc.)",
-  "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3"]
-}
-
-Responda APENAS com o JSON válido.`;
-
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 400
-    });
-
-    const resultado = JSON.parse(completion.choices[0].message.content);
-    
-    // Salvar interação no histórico
-    await supabase.from('conversas').insert({
-      telefone: usuario.telefone,
-      usuario_id: usuario.id,
-      mensagem_usuario: solicitacao,
-      resposta_bot: JSON.stringify(resultado),
-      created_at: new Date()
-    });
-    
-    return `🎬 *Seu texto personalizado, ${usuario.nome}!*
-
-📱 **TEXTO PARA GRAVAR:**
-"${resultado.texto_para_gravar}"
-
-🎭 **DICAS DE GRAVAÇÃO:**
-${resultado.dicas_gravacao}
-
-🏷️ **HASHTAGS:**
-${resultado.hashtags.join(' ')}
-
----
-📋 *Para copiar:* Mantenha pressionado o texto acima
-
-✨ *Precisa de outro texto? Só me falar!* ✨`;
-
-  } catch (error) {
-    console.error('❌ Erro ao gerar texto personalizado:', error);
-    
-    return `📱 **TEXTO PARA GRAVAR:**
-"Oi, eu sou ${usuario.nome}! Como ${usuario.profissao} especialista em ${usuario.especialidade}, estou aqui para te ajudar com o que você precisar. ${usuario.empresa !== 'Profissional autônomo' ? `Aqui na ${usuario.empresa}` : 'No meu trabalho'}, eu faço questão de dar o meu melhor para você. Vem conversar comigo!"
-
-🎭 **DICA:** Grave com energia e sorria!
-
-💡 **OBSERVAÇÃO:** Texto básico gerado por erro no sistema.
-
----
-✨ *Precisa de outro texto? Só me falar!* ✨`;
-  }
-}
-
-// Função para obter exemplos de especialidade por profissão
-function getExemplosEspecialidade(profissao) {
-  const exemplos = {
-    'barbeiro': 'fade, barba, cortes clássicos, degradê, bigode',
-    'dentista': 'ortodontia, implantes, clareamento, estética dental',
-    'cabeleireira': 'cortes femininos, coloração, escova, cachos, alisamento',
-    'nutricionista': 'emagrecimento, esportiva, infantil, gestante, vegana',
-    'esteticista': 'limpeza de pele, massagem, depilação, drenagem, peeling',
-    'mecânico': 'motor, freios, suspensão, elétrica, geral',
-    'manicure': 'unhas decoradas, pedicure, alongamento, nail art',
-    'personal trainer': 'musculação, funcional, emagrecimento, idosos',
-    'médico': 'clínica geral, cardiologia, pediatria, ginecologia',
-    'advogado': 'civil, criminal, trabalhista, família, empresarial'
-  };
-  
-  return exemplos[profissao.toLowerCase()] || 'sua área principal de atuação';
 }
 
 // Função para processar áudio com Whisper
@@ -608,33 +523,12 @@ async function processarAudio(audioUrl) {
 // Rota de teste
 app.get('/', (req, res) => {
   res.json({ 
-    message: 'Bot Stories API funcionando!',
+    message: 'Luke Stories V13 API funcionando!',
     status: 'online',
     timestamp: new Date().toISOString(),
-    supabase: 'conectado',
-    openai: 'configurado'
+    versao: '13.0',
+    sistema_interativo: 'ativo'
   });
-});
-
-// Teste de busca específica
-app.get('/test-busca/:telefone', async (req, res) => {
-  try {
-    const telefone = req.params.telefone;
-    console.log('🔍 Testando busca para:', telefone);
-    
-    const usuario = await buscarUsuario(telefone);
-    
-    res.json({
-      telefone_buscado: telefone,
-      usuario_encontrado: usuario ? 'SIM' : 'NÃO',
-      dados: usuario,
-      status: usuario ? usuario.status : 'N/A'
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error.message
-    });
-  }
 });
 
 // Teste simples do banco
@@ -654,62 +548,6 @@ app.get('/test-simple', async (req, res) => {
     res.json({ 
       message: 'Erro capturado',
       erro: error.message 
-    });
-  }
-});
-
-// Teste OpenAI via GET
-app.get('/test-openai', async (req, res) => {
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: "Sou barbeiro e preciso de uma ideia curta para story de sábado manhã"
-        }
-      ],
-      max_tokens: 150
-    });
-
-    res.json({
-      message: 'OpenAI funcionando!',
-      resposta: completion.choices[0].message.content,
-      status: 'sucesso'
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Erro na OpenAI',
-      details: error.message
-    });
-  }
-});
-
-// Teste OpenAI
-app.post('/test-gpt', async (req, res) => {
-  try {
-    const { prompt } = req.body;
-    
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: prompt || "Diga olá em português"
-        }
-      ],
-      max_tokens: 100
-    });
-
-    res.json({
-      message: 'OpenAI funcionando!',
-      resposta: completion.choices[0].message.content,
-      status: 'sucesso'
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Erro na OpenAI',
-      details: error.message
     });
   }
 });
@@ -849,7 +687,6 @@ Vamos começar? Me mande suas informações! 😊`;
     });
     
   } catch (error) {
-    console.error('❌ Erro no webhook Ticto:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -937,10 +774,11 @@ app.post('/webhook/zapi', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`🚀 Servidor Luke Stories V13 rodando na porta ${PORT}`);
   console.log('📱 Webhook Z-API: /webhook/zapi');
   console.log('💰 Webhook Ticto: /webhook/ticto');
   console.log('✅ Supabase configurado!');
   console.log('🤖 OpenAI configurado!');
+  console.log('🎯 Sistema interativo ATIVO!');
   console.log('🔥 BOT PRONTO PARA FUNCIONAR!');
 });
