@@ -906,7 +906,20 @@ Responda APENAS com o JSON válido.`;
     console.log('🕐 Fim Vision:', new Date().toISOString());
     console.log('✅ Análise da imagem concluída');
 
-    const resultado = JSON.parse(completion.choices[0].message.content);
+    // Limpar resposta para garantir JSON válido
+    let respostaLimpa = completion.choices[0].message.content.trim();
+    
+    // Remover ```json e ``` se existirem
+    if (respostaLimpa.startsWith('```json')) {
+      respostaLimpa = respostaLimpa.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    }
+    if (respostaLimpa.startsWith('```')) {
+      respostaLimpa = respostaLimpa.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    console.log('🔧 Resposta limpa para parse:', respostaLimpa.substring(0, 100) + '...');
+
+    const resultado = JSON.parse(respostaLimpa);
     
     // Salvar interação no histórico
     await supabase.from('conversas').insert({
