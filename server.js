@@ -816,6 +816,54 @@ function extrairProfissaoEspecialidade(mensagem) {
   };
 }
 
+// Função auxiliar para criar legenda baseada no contexto quando GPT recusa imagem
+function criarLegendaDoContexto(usuario, contexto) {
+  const contextoLower = contexto.toLowerCase();
+  
+  // Detectar tipo de procedimento/serviço
+  let procedimento = '';
+  let cliente = '';
+  
+  // Extrair nome do cliente se mencionado
+  const matchCliente = contexto.match(/cliente\s+(\w+)/i);
+  if (matchCliente) {
+    cliente = matchCliente[1];
+  }
+  
+  // Detectar procedimentos
+  if (contextoLower.includes('preenchimento labial') || contextoLower.includes('lábio')) {
+    procedimento = 'preenchimento labial';
+  } else if (contextoLower.includes('botox')) {
+    procedimento = 'aplicação de botox';
+  } else if (contextoLower.includes('clareamento')) {
+    procedimento = 'clareamento dental';
+  } else if (contextoLower.includes('harmonização')) {
+    procedimento = 'harmonização facial';
+  } else {
+    procedimento = `trabalho em ${usuario.especialidade}`;
+  }
+  
+  // Criar legenda personalizada
+  let legenda = '';
+  
+  if (cliente) {
+    legenda = `Mais um resultado incrível! ✨ Fiz ${procedimento} na ${cliente} e o resultado ficou maravilhoso! `;
+  } else {
+    legenda = `Resultado incrível de hoje! ✨ ${procedimento.charAt(0).toUpperCase() + procedimento.slice(1)} que fala por si só! `;
+  }
+  
+  // Adicionar call-to-action baseado na profissão
+  if (usuario.profissao.toLowerCase().includes('dentista')) {
+    legenda += `Um sorriso transformado com técnica e cuidado. Agende sua avaliação! 😊`;
+  } else if (usuario.profissao.toLowerCase().includes('esteticista')) {
+    legenda += `Realçar a beleza natural é minha especialidade. Vem conversar comigo! 💖`;
+  } else {
+    legenda += `Qualidade e cuidado em cada atendimento. Entre em contato! 💪`;
+  }
+  
+  return legenda;
+}
+
 // Função para processar imagem com GPT-4 Vision
 async function processarImagem(imageUrl, telefone, contextoAdicional = '') {
   try {
@@ -918,6 +966,29 @@ Responda APENAS com o JSON válido.`;
     }
     
     console.log('🔧 Resposta limpa para parse:', respostaLimpa.substring(0, 100) + '...');
+
+    // Verificar se GPT recusou analisar a imagem
+    if (respostaLimpa.toLowerCase().includes("i'm sorry") || 
+        respostaLimpa.toLowerCase().includes("i can't") ||
+        respostaLimpa.toLowerCase().includes("sorry") ||
+        !respostaLimpa.startsWith('{')) {
+      
+      console.log('❌ GPT recusou analisar imagem - criando legenda baseada no contexto');
+      
+      // Criar legenda baseada no contexto fornecido pelo usuário
+      const legenda = criarLegendaDoContexto(usuario, contextoAdicional);
+      
+      return `📸 **LEGENDA PARA SUA FOTO:**
+
+"${legenda}"
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+💡 *Legenda criada com base nas informações que você forneceu*
+
+✨ *Precisa de ajustes na legenda? Só me falar!* ✨`;
+    }
 
     const resultado = JSON.parse(respostaLimpa);
     
