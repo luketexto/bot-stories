@@ -202,7 +202,182 @@ async function buscarUsuario(telefone) {
   }
 }
 
-// NOVA FUNÇÃO - Analisar se é ajuste de legenda ou texto novo
+// NOVA FUNÇÃO - Analisar se é mudança de cadastro ou texto temporário
+function analisarMudancaCadastro(mensagem, usuario) {
+  console.log('🔍 Analisando se é mudança de cadastro:', mensagem);
+  
+  const texto = mensagem.toLowerCase();
+  
+  // Indicadores de mudança DEFINITIVA de cadastro
+  const indicadoresMudancaDefinitiva = [
+    'agora sou', 'agora trabalho como', 'mudei de profissão', 'mudei para',
+    'não trabalho mais como', 'deixei de ser', 'virei', 'me tornei',
+    'minha nova profissão', 'minha especialidade agora', 'atuo como',
+    'mudei minha especialidade', 'não sou mais', 'agora atuo'
+  ];
+  
+  // Indicadores de texto TEMPORÁRIO
+  const indicadoresTemporario = [
+    'como se eu fosse', 'finge que sou', 'imagina que sou',
+    'para esse texto', 'só nesse texto', 'temporariamente',
+    'simule que sou', 'pretenda que sou'
+  ];
+  
+  const eMudancaDefinitiva = indicadoresMudancaDefinitiva.some(indicador => texto.includes(indicador));
+  const eTemporario = indicadoresTemporario.some(indicador => texto.includes(indicador));
+  
+  if (eTemporario) {
+    console.log('✅ Detectado: mudança temporária para texto específico');
+    return { tipo: 'temporario', novaProfissao: null };
+  }
+  
+  if (eMudancaDefinitiva) {
+    console.log('⚠️ Detectado: mudança DEFINITIVA de cadastro');
+    
+    // Tentar extrair nova profissão da mensagem
+    const novoPerfil = extrairNovoPerfil(mensagem);
+    
+    return { 
+      tipo: 'definitivo', 
+      novaProfissao: novoPerfil.profissao,
+      novaEspecialidade: novoPerfil.especialidade 
+    };
+  }
+  
+  console.log('❌ Não detectada mudança de cadastro');
+  return { tipo: 'nenhum' };
+}
+
+// NOVA FUNÇÃO - Extrair novo perfil profissional da mensagem
+function extrairNovoPerfil(mensagem) {
+  console.log('🔍 Extraindo novo perfil de:', mensagem);
+  
+  // Remover partes irrelevantes da mensagem
+  let textoLimpo = mensagem.toLowerCase()
+    .replace(/agora sou|agora trabalho como|mudei de profissão para|mudei para|virei|me tornei|não trabalho mais como|deixei de ser/g, '')
+    .replace(/minha nova profissão é|minha especialidade agora é|atuo como/g, '')
+    .trim();
+  
+  // Tentar extrair profissão e especialidade
+  let profissao = textoLimpo;
+  let especialidade = 'Geral';
+  
+  // Buscar padrões de especialidade
+  const regexEspecialidade = /(.*?)(?:,|\s+)(?:especialista em|especialidade em|focado em|área de|que trabalha com)\s+(.+)/i;
+  const match = textoLimpo.match(regexEspecialidade);
+  
+  if (match) {
+    profissao = match[1].trim();
+    especialidade = match[2].trim();
+  }
+  
+  // Limpar profissão de palavras extras
+  profissao = profissao.replace(/^(sou|trabalho como|atuo como)\s+/i, '').trim();
+  
+  console.log(`✅ Novo perfil extraído: Profissão: "${profissao}" | Especialidade: "${especialidade}"`);
+  
+  return {
+    profissao: profissao,
+    especialidade: especialidade
+  };
+}
+
+// NOVA FUNÇÃO - Processar confirmação de mudança de cadastro
+async function processarConfirmacaoMudanca(telefone, mensagem, usuario) {
+  console.log('⚠️ Processando confirmação de mudança de cadastro...');
+  
+  const respostaLower = mensagem.toLowerCase();
+  
+  if (respostaLower.includes('sim') || respostaLower.includes('confirmo')) {
+    console.log('✅ Usuário confirmou mudança de cadastro');
+    
+    // Buscar dados da mudança pendente
+    const novaProfissao = usuario.mudanca_profissao_pendente;
+    const novaEspecialidade = usuario.mudanca_especialidade_pendente;
+    
+    // Salvar backup dos dados antigos (para logs)
+    const dadosAntigos = {
+      profissao_anterior: usuario.profissao,
+      especialidade_anterior: usuario.especialidade
+    };
+    
+    // Atualizar cadastro no banco
+    await supabase.from('usuarios')
+      .update({ 
+        profissao: novaProfissao,
+        especialidade: novaEspecialidade,
+        mudanca_profissao_pendente: null,
+        mudanca_especialidade_pendente: null,
+        aguardando_confirmacao_mudanca: false,
+        updated_at: new Date()
+      })
+      .eq('telefone', telefone);
+    
+    // RESETAR PREFERÊNCIAS APRENDIDAS (nova profissão = novos padrões)
+    console.log('🔄 Resetando preferências aprendidas...');
+    await supabase.from('usuario_preferencias')
+      .delete()
+      .eq('telefone', telefone);
+    
+    // Log da mudança
+    await supabase.from('conversas').insert({
+      telefone: telefone,
+      usuario_id: usuario.id,
+      mensagem_usuario: `[MUDANÇA DE CADASTRO CONFIRMADA] ${JSON.stringify(dadosAntigos)} → ${novaProfissao}, ${novaEspecialidade}`,
+      resposta_bot: JSON.stringify({ mudanca_cadastro: true }),
+      tipo_mensagem: 'mudanca_cadastro_confirmada',
+      created_at: new Date()
+    });
+    
+    console.log(`✅ Cadastro atualizado: ${novaProfissao} - ${novaEspecialidade}`);
+    
+    return `✅ **CADASTRO ATUALIZADO COM SUCESSO!**
+
+🔄 **Alterações realizadas:**
+👤 **Nova profissão:** ${novaProfissao}
+🎯 **Nova especialidade:** ${novaEspecialidade}
+
+🧠 **Sistema resetado:** Vou reaprender suas preferências com base na nova profissão!
+
+🚀 **Agora todos os textos serão criados como ${novaProfissao} especialista em ${novaEspecialidade}!**
+
+💬 *O que gostaria de criar primeiro na sua nova área?* ✨`;
+    
+  } else if (respostaLower.includes('não') || respostaLower.includes('nao') || respostaLower.includes('cancelar')) {
+    console.log('❌ Usuário cancelou mudança de cadastro');
+    
+    // Limpar estado de mudança pendente
+    await supabase.from('usuarios')
+      .update({ 
+        mudanca_profissao_pendente: null,
+        mudanca_especialidade_pendente: null,
+        aguardando_confirmacao_mudanca: false,
+        updated_at: new Date()
+      })
+      .eq('telefone', telefone);
+    
+    return `❌ **Mudança cancelada!**
+
+Seu cadastro permanece como:
+👤 **Profissão:** ${usuario.profissao}
+🎯 **Especialidade:** ${usuario.especialidade}
+
+💬 *Se era só para um texto específico, pode me pedir:*
+*"Crie um texto como se eu fosse [profissão]"*
+
+✨ *O que gostaria de criar?* ✨`;
+    
+  } else {
+    // Resposta não clara - pedir confirmação novamente
+    return `Não entendi sua resposta! 😅
+
+⚠️ **Para confirmar a mudança de cadastro:**
+✅ *"SIM, confirmo a mudança"*
+❌ *"NÃO, cancela"* ou *"Era só para esse texto"*
+
+**Aguardo sua confirmação clara!** 🙏`;
+  }
+}
 function analisarSeEhAjusteLegenda(mensagem, usuario) {
   console.log('🧠 Analisando se é ajuste de legenda:', mensagem);
   
@@ -682,7 +857,57 @@ Me diga claramente o que prefere! 😊`;
       }
     }
     
-    // NOVO: Verificar se está no modo legenda e analisar intenção
+    // NOVO: Verificar se está aguardando confirmação de mudança de cadastro
+    if (usuario.aguardando_confirmacao_mudanca) {
+      console.log('⚠️ Processando confirmação de mudança de cadastro...');
+      return await processarConfirmacaoMudanca(telefone, mensagem, usuario);
+    }
+    
+    // NOVO: Verificar se é mudança de cadastro
+    const analiseMudanca = analisarMudancaCadastro(mensagem, usuario);
+    
+    if (analiseMudanca.tipo === 'definitivo') {
+      console.log('⚠️ Detectada mudança DEFINITIVA de cadastro');
+      
+      // Salvar dados da mudança pendente
+      await supabase.from('usuarios')
+        .update({ 
+          mudanca_profissao_pendente: analiseMudanca.novaProfissao,
+          mudanca_especialidade_pendente: analiseMudanca.novaEspecialidade,
+          aguardando_confirmacao_mudanca: true,
+          updated_at: new Date()
+        })
+        .eq('telefone', telefone);
+      
+      // Enviar alerta de confirmação
+      return `⚠️ **ATENÇÃO - MUDANÇA DE CADASTRO**
+
+🔍 **Detectei que você quer alterar seu cadastro permanentemente:**
+
+📋 **DADOS ATUAIS:**
+👤 **Profissão atual:** ${usuario.profissao}
+🎯 **Especialidade atual:** ${usuario.especialidade}
+
+🔄 **NOVA INFORMAÇÃO DETECTADA:**
+👤 **Nova profissão:** ${analiseMudanca.novaProfissao}
+🎯 **Nova especialidade:** ${analiseMudanca.novaEspecialidade}
+
+⚠️ **IMPORTANTE:** Esta mudança afetará TODOS os seus textos futuros!
+🔄 **Suas preferências aprendidas serão resetadas** para reaprender com a nova profissão.
+
+**Para confirmar:**
+✅ **"SIM, confirmo a mudança"** - Alterar cadastro permanentemente
+❌ **"NÃO, era só para esse texto"** - Manter cadastro atual
+
+💭 *Se quiser apenas um texto específico como outra profissão, diga: "crie um texto como se eu fosse [profissão]"*
+
+**Aguardo sua confirmação!** 🙏`;
+    }
+    
+    if (analiseMudanca.tipo === 'temporario') {
+      console.log('✅ Detectada mudança temporária - seguindo para geração normal');
+      // Continua o fluxo normal, mas com contexto temporário
+    }
     if (usuario.modo_legenda_ativo && usuario.ultima_legenda_gerada) {
       console.log('📸 Usuário está no modo legenda, analisando intenção...');
       
