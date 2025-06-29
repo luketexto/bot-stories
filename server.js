@@ -322,7 +322,8 @@ function analisarSolicitacao(solicitacao, usuario) {
     'texto', 'ideia', 'algo', 'story', 'stories', 'conteudo', 'conteúdo',
     'gravar', 'falar', 'postar', 'publicar', 'manhã', 'tarde', 'noite',
     'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo',
-    'hoje', 'agora', 'criativo', 'legal', 'bacana'
+    'hoje', 'agora', 'criativo', 'legal', 'bacana', 'curta', 'rápida',
+    'rapidinho', 'simples'
   ];
   
   const temGenerico = palavrasGenericas.some(palavra => texto.includes(palavra));
@@ -524,14 +525,12 @@ ${resultado.hashtags.join(' ')}
   } catch (error) {
     console.error('❌ Erro ao gerar texto personalizado:', error);
     
-    return `🎬 *Texto para você, ${usuario.nome}!*
-
-📱 **TEXTO PARA GRAVAR:**
+    return `📱 **TEXTO PARA GRAVAR:**
 "Oi, eu sou ${usuario.nome}! Como ${usuario.profissao} especialista em ${usuario.especialidade}, estou aqui para te ajudar com o que você precisar. ${usuario.empresa !== 'Profissional autônomo' ? `Aqui na ${usuario.empresa}` : 'No meu trabalho'}, eu faço questão de dar o meu melhor para você. Vem conversar comigo!"
 
 🎭 **DICA:** Grave com energia e sorria!
 
-🏷️ **HASHTAGS:** #${usuario.profissao.replace(/\s/g, '')} #${usuario.especialidade.replace(/\s/g, '')} #profissional
+💡 **OBSERVAÇÃO:** Texto básico gerado por erro no sistema.
 
 ---
 ✨ *Precisa de outro texto? Só me falar!* ✨`;
@@ -615,6 +614,27 @@ app.get('/', (req, res) => {
     supabase: 'conectado',
     openai: 'configurado'
   });
+});
+
+// Teste de busca específica
+app.get('/test-busca/:telefone', async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    console.log('🔍 Testando busca para:', telefone);
+    
+    const usuario = await buscarUsuario(telefone);
+    
+    res.json({
+      telefone_buscado: telefone,
+      usuario_encontrado: usuario ? 'SIM' : 'NÃO',
+      dados: usuario,
+      status: usuario ? usuario.status : 'N/A'
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error.message
+    });
+  }
 });
 
 // Teste simples do banco
