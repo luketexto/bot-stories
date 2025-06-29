@@ -331,7 +331,31 @@ Quer alterar suas informações?
 Ex: "Meu nome agora é...", "Mudei de especialidade para...", etc.`;
     }
     
-    // Gerar texto personalizado baseado na solicitação
+    // Verificar se é saudação simples (sem solicitação específica)
+    const saudacoesSimples = ['oi', 'olá', 'ola', 'hey', 'hi', 'bom dia', 'boa tarde', 'boa noite'];
+    const eSaudacao = saudacoesSimples.some(saudacao => 
+      mensagem.toLowerCase().trim() === saudacao || 
+      mensagem.toLowerCase().trim() === saudacao + '!'
+    );
+    
+    if (eSaudacao) {
+      return `Oi ${usuario.nome}! 😊
+
+Sou o Luke Stories, seu assistente para criar textos incríveis! 
+
+Como ${usuario.profissao} especialista em ${usuario.especialidade}, posso te ajudar a criar conteúdos personalizados para seus stories e redes sociais.
+
+💬 *Me diga o que precisa:*
+📱 "Quero um texto para gravar hoje"
+🎯 "Preciso de uma dica sobre [assunto]"
+✨ "Ideia para story de [situação]"
+
+*Pode mandar por áudio também!* 🎤
+
+O que você gostaria de criar hoje? 🚀`;
+    }
+    
+    // SEMPRE analisar a solicitação, mesmo para usuários completos
     return await gerarTextoPersonalizado(usuario, mensagem);
   }
   
