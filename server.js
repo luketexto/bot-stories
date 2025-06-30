@@ -867,7 +867,15 @@ function getProfessionalAudience(profissao) {
 async function gerarTextoPersonalizado(usuario, solicitacao) {
   console.log(`🎯 Gerando texto para ${usuario.nome}: ${solicitacao}`);
   
-  // ANALISAR SE PRECISA DE PERGUNTAS DE REFINAMENTO
+  // PRIMEIRO: Verificar se é agendamento de conteúdo (PRIORIDADE MÁXIMA)
+  const agendamento = detectarAgendamento(solicitacao, usuario);
+  
+  if (agendamento.ehAgendamento) {
+    console.log('📅 Detectado agendamento de conteúdo - processando imediatamente');
+    return await processarAgendamento(usuario, agendamento, usuario.telefone);
+  }
+  
+  // SEGUNDO: Analisar se precisa de perguntas de refinamento
   const analise = analisarSolicitacao(solicitacao, usuario);
   
   if (analise.precisaPerguntas) {
@@ -886,7 +894,7 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
     return gerarPerguntasRefinamento(usuario, solicitacao);
   }
   
-  // VERIFICAR SE É RESPOSTA DE REFINAMENTO
+  // TERCEIRO: Verificar se é resposta de refinamento
   if (usuario.aguardando_refinamento && usuario.solicitacao_pendente) {
     console.log('✅ Processando resposta de refinamento');
     
@@ -906,7 +914,7 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
     return await criarTextoComIA(usuario, solicitacaoCompleta, true);
   }
   
-  // GERAR TEXTO DIRETO (já tem informações suficientes)
+  // QUARTO: Gerar texto direto (já tem informações suficientes)
   console.log('🚀 Gerando texto direto');
   return await criarTextoComIA(usuario, solicitacao, false);
 }
