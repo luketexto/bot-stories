@@ -1531,8 +1531,15 @@ Responda APENAS com a legenda, sem JSON ou formatação especial.`;
     
     console.log('✅ Modo legenda ativado para ajustes futuros');
     
-    // RETORNO COM RESPOSTA NATURAL PARA LEGENDA
-    return await gerarRespostaNatural('LEGENDA_FOTO', usuario, legenda);
+    // RETORNO ESPECÍFICO PARA LEGENDA - MAIS LIMPO
+    return `📸 **LEGENDA PARA ESSA IMAGEM:**
+
+"${legenda}"
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de ajustes na legenda? Só me falar!* ✨`;
 
   } catch (error) {
     console.log('🕐 Erro em:', new Date().toISOString());
@@ -1626,8 +1633,15 @@ Responda APENAS com a nova legenda ajustada, sem JSON ou formatação especial.`
     
     console.log('✅ Legenda ajustada com sucesso');
     
-    // RETORNO COM RESPOSTA NATURAL
-    return await gerarRespostaNatural('AJUSTE_LEGENDA', usuario, legendaAjustada);
+    // RETORNO ESPECÍFICO PARA LEGENDA AJUSTADA
+    return `📸 **LEGENDA PARA ESSA IMAGEM:**
+
+"${legendaAjustada}"
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de mais ajustes? Só me falar!* ✨`;
 
   } catch (error) {
     console.error('❌ Erro ao ajustar legenda:', error);
