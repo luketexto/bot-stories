@@ -1007,8 +1007,20 @@ Responda APENAS com o JSON válido.`;
     }
     
     // RETORNO ESPECÍFICO PARA TEXTO DE STORY
-    // RETORNO COM RESPOSTA NATURAL E VARIADA
-    return await gerarRespostaNatural('TEXTO_GRAVAR', usuario, resultado);
+    // RETORNO ESPECÍFICO PARA TEXTO DE STORY
+    return `📱 **TEXTO PARA GRAVAR:**
+"${resultado.texto_para_gravar}"
+
+🎭 **DICAS DE GRAVAÇÃO:**
+${resultado.dicas_gravacao}
+
+💡 **OBSERVAÇÕES:**
+${resultado.observacoes}
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de outro texto ou ajustes? Só me falar!* ✨`;
 
   } catch (error) {
     console.error('❌ Erro ao gerar texto personalizado:', error);
