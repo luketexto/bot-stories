@@ -867,15 +867,7 @@ function getProfessionalAudience(profissao) {
 async function gerarTextoPersonalizado(usuario, solicitacao) {
   console.log(`🎯 Gerando texto para ${usuario.nome}: ${solicitacao}`);
   
-  // PRIMEIRO: Verificar se é agendamento de conteúdo (PRIORIDADE MÁXIMA)
-  const agendamento = detectarAgendamento(solicitacao, usuario);
-  
-  if (agendamento.ehAgendamento) {
-    console.log('📅 Detectado agendamento de conteúdo - processando imediatamente');
-    return await processarAgendamento(usuario, agendamento, usuario.telefone);
-  }
-  
-  // SEGUNDO: Analisar se precisa de perguntas de refinamento
+  // ANALISAR SE PRECISA DE PERGUNTAS DE REFINAMENTO
   const analise = analisarSolicitacao(solicitacao, usuario);
   
   if (analise.precisaPerguntas) {
@@ -894,7 +886,7 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
     return gerarPerguntasRefinamento(usuario, solicitacao);
   }
   
-  // TERCEIRO: Verificar se é resposta de refinamento
+  // VERIFICAR SE É RESPOSTA DE REFINAMENTO
   if (usuario.aguardando_refinamento && usuario.solicitacao_pendente) {
     console.log('✅ Processando resposta de refinamento');
     
@@ -914,7 +906,7 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
     return await criarTextoComIA(usuario, solicitacaoCompleta, true);
   }
   
-  // QUARTO: Gerar texto direto (já tem informações suficientes)
+  // GERAR TEXTO DIRETO (já tem informações suficientes)
   console.log('🚀 Gerando texto direto');
   return await criarTextoComIA(usuario, solicitacao, false);
 }
@@ -1182,14 +1174,6 @@ Me diga claramente o que prefere! 😊`;
     if (analiseMudanca.tipo === 'temporario') {
       console.log('✅ Detectada mudança temporária - seguindo para geração normal');
       // Continua o fluxo normal, mas com contexto temporário
-    }
-    
-    // NOVO: Verificar se é agendamento de conteúdo
-    const agendamento = detectarAgendamento(mensagem, usuario);
-    
-    if (agendamento.ehAgendamento) {
-      console.log('📅 Detectado agendamento de conteúdo');
-      return await processarAgendamento(usuario, agendamento, telefone);
     }
     if (usuario.modo_legenda_ativo && usuario.ultima_legenda_gerada) {
       console.log('📸 Usuário está no modo legenda, analisando intenção...');
@@ -1719,141 +1703,6 @@ async function processarAudio(audioUrl) {
     return null;
   }
 }
-
-// NOVA ROTA - CRON para verificar lembretes pendentes
-app.get('/cron/verificar-lembretes', async (req, res) => {
-  try {
-    console.log('⏰ === CRON EXECUTADO ===');
-    console.log('🕐 Timestamp:', new Date().toISOString());
-    
-    const agora = new Date();
-    console.log('🔍 Verificando lembretes para:', agora.toLocaleString('pt-BR'));
-    
-    // Buscar lembretes que devem ser enviados agora
-    const { data: lembretes, error } = await supabase
-      .from('lembretes_conteudo')
-      .select('*')
-      .eq('enviado', false)
-      .eq('cancelado', false)
-      .lte('data_lembrete', agora.toISOString())
-      .order('data_lembrete', { ascending: true });
-    
-    if (error) {
-      console.error('❌ Erro ao buscar lembretes:', error);
-      return res.status(500).json({ error: 'Erro ao buscar lembretes' });
-    }
-    
-    console.log(`📊 Encontrados ${lembretes?.length || 0} lembretes para enviar`);
-    
-    if (!lembretes || lembretes.length === 0) {
-      console.log('✅ Nenhum lembrete pendente');
-      return res.status(200).json({ 
-        status: 'success',
-        message: 'Nenhum lembrete pendente',
-        processados: 0
-      });
-    }
-    
-    let sucessos = 0;
-    let erros = 0;
-    
-    // Processar cada lembrete
-    for (const lembrete of lembretes) {
-      try {
-        console.log(`📤 Enviando lembrete ID ${lembrete.id} para ${lembrete.telefone}`);
-        
-        // Buscar dados do usuário
-        const usuario = await buscarUsuario(lembrete.telefone);
-        
-        if (!usuario) {
-          console.error(`❌ Usuário não encontrado: ${lembrete.telefone}`);
-          erros++;
-          continue;
-        }
-        
-        // Formatar data de postagem
-        const dataPostar = new Date(lembrete.data_para_postar);
-        const dataFormatada = dataPostar.toLocaleString('pt-BR', {
-          weekday: 'long',
-          day: '2-digit',
-          month: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-        
-        // Criar mensagem de lembrete
-        const mensagemLembrete = `🔔 **LEMBRETE DE CONTEÚDO!**
-
-⏰ **É hora de postar!**
-📅 **Agendado para:** ${dataFormatada}
-
-📱 **SEU TEXTO:**
-"${lembrete.texto_gerado}"
-
-🎬 **Dicas rápidas:**
-✅ Grave com boa iluminação
-✅ Fale com energia
-✅ Sorria para a câmera
-
----
-📋 *Para copiar:* Mantenha pressionado o texto acima
-
-✨ *Sucesso no seu post!* 🚀`;
-
-        // Enviar via Z-API
-        const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
-        
-        const response = await axios.post(`${ZAPI_URL}/send-text`, {
-          phone: lembrete.telefone,
-          message: mensagemLembrete
-        }, {
-          headers: {
-            'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-          },
-          timeout: 10000
-        });
-        
-        console.log(`✅ Lembrete ${lembrete.id} enviado com sucesso:`, response.data);
-        
-        // Marcar como enviado
-        await supabase
-          .from('lembretes_conteudo')
-          .update({ 
-            enviado: true,
-            updated_at: new Date()
-          })
-          .eq('id', lembrete.id);
-        
-        sucessos++;
-        
-      } catch (lembreteError) {
-        console.error(`❌ Erro ao enviar lembrete ${lembrete.id}:`, lembreteError.message);
-        erros++;
-      }
-      
-      // Pequena pausa entre envios para evitar rate limit
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    console.log(`📊 Processamento concluído: ${sucessos} sucessos, ${erros} erros`);
-    
-    res.status(200).json({
-      status: 'success',
-      message: `Processados ${lembretes.length} lembretes`,
-      sucessos: sucessos,
-      erros: erros,
-      timestamp: agora.toISOString()
-    });
-    
-  } catch (error) {
-    console.error('💥 Erro geral no CRON:', error);
-    res.status(500).json({ 
-      error: 'Erro interno do servidor',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
 
 // Rota de teste
 app.get('/', (req, res) => {
