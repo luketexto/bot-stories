@@ -1080,11 +1080,8 @@ Após o pagamento, você receberá acesso imediato! ✨`;
           })
           .eq('telefone', telefone);
         
-        // Processar imagem com contexto adicional se especificado
-        let contextoAdicional = '';
-        if (respostaLower.includes('sobre') || respostaLower.includes('legenda sobre')) {
-          contextoAdicional = `\n\nContexto específico solicitado: ${mensagem}`;
-        }
+        // Processar imagem com contexto adicional - SEMPRE usar o contexto da mensagem
+        const contextoAdicional = `\n\nContexto específico solicitado: ${mensagem}`;
         
         return await processarImagem(usuario.imagem_pendente, telefone, contextoAdicional);
       } 
