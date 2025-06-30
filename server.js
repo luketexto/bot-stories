@@ -202,7 +202,274 @@ async function buscarUsuario(telefone) {
   }
 }
 
-// NOVA FUNÇÃO - Analisar se é mudança de cadastro ou texto temporário
+// NOVA FUNÇÃO - Detectar agendamento de conteúdo
+function detectarAgendamento(mensagem, usuario) {
+  console.log('📅 Analisando se é agendamento:', mensagem);
+  
+  const texto = mensagem.toLowerCase();
+  
+  // Indicadores de agendamento
+  const indicadoresAgendamento = [
+    'para amanhã', 'para hoje', 'para segunda', 'para terça', 'para quarta', 
+    'para quinta', 'para sexta', 'para sábado', 'para domingo',
+    'me lembre', 'lembra de', 'agenda para', 'agendar para',
+    'às', 'as ', ' h', ':00', ':30', ':15', ':45',
+    'manhã', 'tarde', 'noite', 'madrugada',
+    'antes de postar', 'meia hora antes', 'uma hora antes', '30 min antes'
+  ];
+  
+  const temAgendamento = indicadoresAgendamento.some(indicador => texto.includes(indicador));
+  
+  if (!temAgendamento) {
+    return { ehAgendamento: false };
+  }
+  
+  console.log('📅 Detectado agendamento!');
+  
+  // Extrair informações do agendamento
+  const agendamento = extrairDadosAgendamento(mensagem);
+  
+  return {
+    ehAgendamento: true,
+    ...agendamento
+  };
+}
+
+// NOVA FUNÇÃO - Extrair dados do agendamento
+function extrairDadosAgendamento(mensagem) {
+  console.log('📊 Extraindo dados do agendamento:', mensagem);
+  
+  const texto = mensagem.toLowerCase();
+  const agora = new Date();
+  let dataPostar = new Date();
+  let dataLembrete = new Date();
+  let contextoTexto = mensagem;
+  
+  // Detectar quando postar
+  if (texto.includes('amanhã')) {
+    dataPostar.setDate(agora.getDate() + 1);
+  } else if (texto.includes('hoje')) {
+    // Mantém data atual
+  } else if (texto.includes('segunda')) {
+    dataPostar = proximoDiaSemana(1); // Segunda
+  } else if (texto.includes('terça')) {
+    dataPostar = proximoDiaSemana(2); // Terça
+  } else if (texto.includes('quarta')) {
+    dataPostar = proximoDiaSemana(3); // Quarta
+  } else if (texto.includes('quinta')) {
+    dataPostar = proximoDiaSemana(4); // Quinta
+  } else if (texto.includes('sexta')) {
+    dataPostar = proximoDiaSemana(5); // Sexta
+  } else if (texto.includes('sábado') || texto.includes('sabado')) {
+    dataPostar = proximoDiaSemana(6); // Sábado
+  } else if (texto.includes('domingo')) {
+    dataPostar = proximoDiaSemana(0); // Domingo
+  }
+  
+  // Detectar horário para postar
+  const regexHorario = /(\d{1,2})(?::(\d{2}))?\s*(?:h|horas?)?(?:\s*da?\s*(manhã|tarde|noite))?/;
+  const matchHorario = texto.match(regexHorario);
+  
+  if (matchHorario) {
+    let hora = parseInt(matchHorario[1]);
+    const minuto = parseInt(matchHorario[2] || '0');
+    const periodo = matchHorario[3];
+    
+    // Ajustar hora baseado no período
+    if (periodo === 'tarde' && hora < 12) {
+      hora += 12;
+    } else if (periodo === 'noite' && hora < 12) {
+      hora += 12;
+    } else if (periodo === 'manhã' && hora === 12) {
+      hora = 0;
+    }
+    
+    dataPostar.setHours(hora, minuto, 0, 0);
+  } else {
+    // Horário padrão se não especificado
+    dataPostar.setHours(9, 0, 0, 0);
+  }
+  
+  // Detectar quando lembrar
+  dataLembrete = new Date(dataPostar);
+  
+  if (texto.includes('meia hora antes') || texto.includes('30 min antes')) {
+    dataLembrete.setMinutes(dataLembrete.getMinutes() - 30);
+  } else if (texto.includes('uma hora antes') || texto.includes('1 hora antes')) {
+    dataLembrete.setHours(dataLembrete.getHours() - 1);
+  } else if (texto.includes('15 min antes')) {
+    dataLembrete.setMinutes(dataLembrete.getMinutes() - 15);
+  } else {
+    // Padrão: 30 minutos antes
+    dataLembrete.setMinutes(dataLembrete.getMinutes() - 30);
+  }
+  
+  // Se o lembrete ficou no passado, ajustar
+  if (dataLembrete <= agora) {
+    dataLembrete = new Date(agora.getTime() + 5 * 60 * 1000); // 5 minutos a partir de agora
+  }
+  
+  console.log(`📅 Data para postar: ${dataPostar.toLocaleString('pt-BR')}`);
+  console.log(`⏰ Data do lembrete: ${dataLembrete.toLocaleString('pt-BR')}`);
+  
+  return {
+    dataPostar: dataPostar,
+    dataLembrete: dataLembrete,
+    contextoTexto: contextoTexto
+  };
+}
+
+// FUNÇÃO AUXILIAR - Calcular próximo dia da semana
+function proximoDiaSemana(diaSemana) {
+  const hoje = new Date();
+  const diasAte = (diaSemana + 7 - hoje.getDay()) % 7;
+  const proximoDia = new Date(hoje);
+  
+  if (diasAte === 0) {
+    // Se é hoje, vai para próxima semana
+    proximoDia.setDate(hoje.getDate() + 7);
+  } else {
+    proximoDia.setDate(hoje.getDate() + diasAte);
+  }
+  
+  return proximoDia;
+}
+
+// NOVA FUNÇÃO - Processar agendamento de conteúdo
+async function processarAgendamento(usuario, dadosAgendamento, telefone) {
+  try {
+    console.log('📅 Processando agendamento de conteúdo...');
+    
+    // Gerar texto baseado no contexto
+    const textoGerado = await gerarTextoParaAgendamento(usuario, dadosAgendamento.contextoTexto);
+    
+    // Criar título do lembrete
+    const dataPostarFormatada = dadosAgendamento.dataPostar.toLocaleString('pt-BR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    const tituloLembrete = `💡 Lembrete: Postar story ${dataPostarFormatada}`;
+    
+    // Salvar na tabela de lembretes
+    const { data, error } = await supabase
+      .from('lembretes_conteudo')
+      .insert({
+        telefone: telefone,
+        usuario_id: usuario.id,
+        texto_gerado: textoGerado,
+        titulo_lembre: tituloLembrete,
+        data_para_postar: dadosAgendamento.dataPostar.toISOString(),
+        data_lembrete: dadosAgendamento.dataLembrete.toISOString(),
+        enviado: false,
+        cancelado: false,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Erro ao salvar agendamento:', error);
+      throw error;
+    }
+    
+    console.log('✅ Agendamento salvo com ID:', data.id);
+    
+    // Salvar no histórico
+    await supabase.from('conversas').insert({
+      telefone: telefone,
+      usuario_id: usuario.id,
+      mensagem_usuario: dadosAgendamento.contextoTexto,
+      resposta_bot: JSON.stringify({ agendamento_id: data.id, texto_gerado: textoGerado }),
+      tipo_mensagem: 'agendamento_criado',
+      created_at: new Date()
+    });
+    
+    const dataLembreteFormatada = dadosAgendamento.dataLembrete.toLocaleString('pt-BR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    return `📅 **AGENDAMENTO CRIADO!**
+
+📱 **TEXTO GERADO:**
+"${textoGerado}"
+
+⏰ **AGENDADO PARA:**
+📍 **Postar:** ${dataPostarFormatada}
+🔔 **Lembrete:** ${dataLembreteFormatada}
+
+✅ **Pronto!** Vou te lembrar no horário certo!
+
+💡 *Para cancelar, diga: "cancelar agendamento"*
+
+---
+📋 *Para copiar agora:* Mantenha pressionado o texto acima
+
+✨ *Precisa de mais alguma coisa?* ✨`;
+    
+  } catch (error) {
+    console.error('❌ Erro ao processar agendamento:', error);
+    
+    return `❌ Ops! Tive um problema ao criar seu agendamento.
+
+💡 **Pode tentar:**
+🔄 Reformular o pedido
+📝 Ser mais específico com data/hora
+
+✨ *Exemplo: "Crie texto para amanhã às 9h, me lembre meia hora antes"*
+
+*Estou aqui para ajudar!* 💪`;
+  }
+}
+
+// NOVA FUNÇÃO - Gerar texto específico para agendamento
+async function gerarTextoParaAgendamento(usuario, contexto) {
+  console.log('📝 Gerando texto para agendamento...');
+  
+  const prompt = `Você é o Luke Stories, assistente para criação de textos para stories.
+
+DADOS DO USUÁRIO:
+- Nome: ${usuario.nome}
+- Profissão: ${usuario.profissao}
+- Especialidade: ${usuario.especialidade}
+- Empresa: ${usuario.empresa || 'Profissional autônomo'}
+
+CONTEXTO DO AGENDAMENTO: ${contexto}
+
+INSTRUÇÕES:
+1. Crie um texto dinâmico e personalizado para story
+2. Use o nome da pessoa de forma natural
+3. Seja específico da área de especialidade quando relevante
+4. Use linguagem natural e conversacional
+5. Tom profissional mas acessível
+6. Tamanho médio (100-150 palavras)
+7. Inclua call-to-action sutil
+
+IMPORTANTE: Retorne APENAS o texto que a pessoa vai gravar, sem explicações extras ou formatação especial.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 300
+    });
+
+    return completion.choices[0].message.content.trim();
+  } catch (error) {
+    console.error('❌ Erro ao gerar texto para agendamento:', error);
+    
+    // Texto de fallback
+    return `Oi, eu sou ${usuario.nome}! Como ${usuario.profissao} especialista em ${usuario.especialidade}, estou aqui para te ajudar com o que você precisar. ${usuario.empresa !== 'Profissional autônomo' ? `Aqui na ${usuario.empresa}` : 'No meu trabalho'}, eu faço questão de dar o meu melhor para você. Vem conversar comigo!`;
+  }
+}
 function analisarMudancaCadastro(mensagem, usuario) {
   console.log('🔍 Analisando se é mudança de cadastro:', mensagem);
   
@@ -908,6 +1175,14 @@ Me diga claramente o que prefere! 😊`;
       console.log('✅ Detectada mudança temporária - seguindo para geração normal');
       // Continua o fluxo normal, mas com contexto temporário
     }
+    
+    // NOVO: Verificar se é agendamento de conteúdo
+    const agendamento = detectarAgendamento(mensagem, usuario);
+    
+    if (agendamento.ehAgendamento) {
+      console.log('📅 Detectado agendamento de conteúdo');
+      return await processarAgendamento(usuario, agendamento, telefone);
+    }
     if (usuario.modo_legenda_ativo && usuario.ultima_legenda_gerada) {
       console.log('📸 Usuário está no modo legenda, analisando intenção...');
       
@@ -1436,6 +1711,141 @@ async function processarAudio(audioUrl) {
     return null;
   }
 }
+
+// NOVA ROTA - CRON para verificar lembretes pendentes
+app.get('/cron/verificar-lembretes', async (req, res) => {
+  try {
+    console.log('⏰ === CRON EXECUTADO ===');
+    console.log('🕐 Timestamp:', new Date().toISOString());
+    
+    const agora = new Date();
+    console.log('🔍 Verificando lembretes para:', agora.toLocaleString('pt-BR'));
+    
+    // Buscar lembretes que devem ser enviados agora
+    const { data: lembretes, error } = await supabase
+      .from('lembretes_conteudo')
+      .select('*')
+      .eq('enviado', false)
+      .eq('cancelado', false)
+      .lte('data_lembrete', agora.toISOString())
+      .order('data_lembrete', { ascending: true });
+    
+    if (error) {
+      console.error('❌ Erro ao buscar lembretes:', error);
+      return res.status(500).json({ error: 'Erro ao buscar lembretes' });
+    }
+    
+    console.log(`📊 Encontrados ${lembretes?.length || 0} lembretes para enviar`);
+    
+    if (!lembretes || lembretes.length === 0) {
+      console.log('✅ Nenhum lembrete pendente');
+      return res.status(200).json({ 
+        status: 'success',
+        message: 'Nenhum lembrete pendente',
+        processados: 0
+      });
+    }
+    
+    let sucessos = 0;
+    let erros = 0;
+    
+    // Processar cada lembrete
+    for (const lembrete of lembretes) {
+      try {
+        console.log(`📤 Enviando lembrete ID ${lembrete.id} para ${lembrete.telefone}`);
+        
+        // Buscar dados do usuário
+        const usuario = await buscarUsuario(lembrete.telefone);
+        
+        if (!usuario) {
+          console.error(`❌ Usuário não encontrado: ${lembrete.telefone}`);
+          erros++;
+          continue;
+        }
+        
+        // Formatar data de postagem
+        const dataPostar = new Date(lembrete.data_para_postar);
+        const dataFormatada = dataPostar.toLocaleString('pt-BR', {
+          weekday: 'long',
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        // Criar mensagem de lembrete
+        const mensagemLembrete = `🔔 **LEMBRETE DE CONTEÚDO!**
+
+⏰ **É hora de postar!**
+📅 **Agendado para:** ${dataFormatada}
+
+📱 **SEU TEXTO:**
+"${lembrete.texto_gerado}"
+
+🎬 **Dicas rápidas:**
+✅ Grave com boa iluminação
+✅ Fale com energia
+✅ Sorria para a câmera
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Sucesso no seu post!* 🚀`;
+
+        // Enviar via Z-API
+        const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+        
+        const response = await axios.post(`${ZAPI_URL}/send-text`, {
+          phone: lembrete.telefone,
+          message: mensagemLembrete
+        }, {
+          headers: {
+            'Client-Token': process.env.ZAPI_CLIENT_TOKEN
+          },
+          timeout: 10000
+        });
+        
+        console.log(`✅ Lembrete ${lembrete.id} enviado com sucesso:`, response.data);
+        
+        // Marcar como enviado
+        await supabase
+          .from('lembretes_conteudo')
+          .update({ 
+            enviado: true,
+            updated_at: new Date()
+          })
+          .eq('id', lembrete.id);
+        
+        sucessos++;
+        
+      } catch (lembreteError) {
+        console.error(`❌ Erro ao enviar lembrete ${lembrete.id}:`, lembreteError.message);
+        erros++;
+      }
+      
+      // Pequena pausa entre envios para evitar rate limit
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    console.log(`📊 Processamento concluído: ${sucessos} sucessos, ${erros} erros`);
+    
+    res.status(200).json({
+      status: 'success',
+      message: `Processados ${lembretes.length} lembretes`,
+      sucessos: sucessos,
+      erros: erros,
+      timestamp: agora.toISOString()
+    });
+    
+  } catch (error) {
+    console.error('💥 Erro geral no CRON:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // Rota de teste
 app.get('/', (req, res) => {
