@@ -865,48 +865,31 @@ function getProfessionalAudience(profissao) {
 
 // FUNÇÃO PRINCIPAL - Gerar texto personalizado COM SISTEMA INTELIGENTE
 async function gerarTextoPersonalizado(usuario, solicitacao) {
-  console.log(`🎯 Gerando texto para ${usuario.nome}: ${solicitacao}`);
-  
-  // ANALISAR SE PRECISA DE PERGUNTAS DE REFINAMENTO
-  const analise = analisarSolicitacao(solicitacao, usuario);
-  
-  if (analise.precisaPerguntas) {
-    console.log('❓ Solicitação precisa de refinamento');
-    
-    // Salvar estado de "aguardando refinamento"
-    await supabase.from('usuarios')
-      .update({ 
-        aguardando_refinamento: true,
-        solicitacao_pendente: solicitacao,
-        updated_at: new Date()
-      })
-      .eq('telefone', usuario.telefone);
-    
-    // Retornar perguntas de refinamento
-    return gerarPerguntasRefinamento(usuario, solicitacao);
-  }
-  
+  console.log(`🧠 Gerando texto para ${usuario.nome}: ${solicitacao}`);
+
   // VERIFICAR SE É RESPOSTA DE REFINAMENTO
   if (usuario.aguardando_refinamento && usuario.solicitacao_pendente) {
     console.log('✅ Processando resposta de refinamento');
-    
+
     // Combinar solicitação original + respostas
-    const solicitacaoCompleta = `${usuario.solicitacao_pendente}\n\nInformações adicionais: ${solicitacao}`;
-    
+    const solicitacaoCompleta = `${usuario.solicitacao_pendente}
+
+Informações adicionais: ${solicitacao}`;
+
     // Limpar estado de refinamento
     await supabase.from('usuarios')
-      .update({ 
+      .update({
         aguardando_refinamento: false,
         solicitacao_pendente: null,
         updated_at: new Date()
       })
       .eq('telefone', usuario.telefone);
-    
+
     // Gerar texto com informações completas
     return await criarTextoComIA(usuario, solicitacaoCompleta, true);
   }
-  
-  // GERAR TEXTO DIRETO (já tem informações suficientes)
+
+  // GERAR TEXTO DIRETO
   console.log('🚀 Gerando texto direto');
   return await criarTextoComIA(usuario, solicitacao, false);
 }
@@ -1006,9 +989,26 @@ Responda APENAS com o JSON válido.`;
       });
     }
     
-    // RETORNO ESPECÍFICO PARA TEXTO DE STORY
-    // RETORNO ESPECÍFICO PARA TEXTO DE STORY
-    return `📱 **TEXTO PARA GRAVAR:**
+    // // RETORNO BASEADO NO CONTEXTO
+let respostaFinal = "";
+
+if (resultado.tipo === "legenda") {
+  respostaFinal = `📸 **LEGENDA PARA SUA FOTO:**
+
+"${resultado.texto_para_gravar}"
+
+🎭 **DICAS DE GRAVAÇÃO:**
+${resultado.dicas_gravacao}
+
+💡 **OBSERVAÇÕES:**
+${resultado.observacoes}
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de ajustes na legenda? Só me falar!* ✨`;
+} else {
+  respostaFinal = `📱 **TEXTO PARA GRAVAR:**
 "${resultado.texto_para_gravar}"
 
 🎭 **DICAS DE GRAVAÇÃO:**
@@ -1021,6 +1021,9 @@ ${resultado.observacoes}
 📋 *Para copiar:* Mantenha pressionado o texto acima
 
 ✨ *Precisa de outro texto ou ajustes? Só me falar!* ✨`;
+}
+
+return respostaFinal;
 
   } catch (error) {
     console.error('❌ Erro ao gerar texto personalizado:', error);
