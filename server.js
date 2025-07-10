@@ -27,7 +27,7 @@ app.use(express.json());
 async function buscarPreferenciasUsuario(telefone, usuarioId) {
   try {
     const { data: preferencias, error } = await supabase
-      .from('usuario_preferencias')
+      .from('preferências_do_usuário')
       .select('*')
       .eq('telefone', telefone)
       .single();
@@ -143,7 +143,7 @@ async function salvarPreferenciasUsuario(telefone, usuarioId, preferencias) {
     if (preferenciasExistentes) {
       // Atualizar existente
       const { data, error } = await supabase
-        .from('usuario_preferencias')
+        .from('preferências_do_usuário')
         .update({
           ...preferencias,
           updated_at: new Date(),
@@ -158,7 +158,7 @@ async function salvarPreferenciasUsuario(telefone, usuarioId, preferencias) {
     } else {
       // Criar novo
       const { data, error } = await supabase
-        .from('usuario_preferencias')
+        .from('preferências_do_usuário')
         .insert({
           telefone: telefone,
           usuario_id: usuarioId,
@@ -582,7 +582,7 @@ async function processarConfirmacaoMudanca(telefone, mensagem, usuario) {
     
     // RESETAR PREFERÊNCIAS APRENDIDAS (nova profissão = novos padrões)
     console.log('🔄 Resetando preferências aprendidas...');
-    await supabase.from('usuario_preferencias')
+    await supabase.from('preferências_do_usuário')
       .delete()
       .eq('telefone', telefone);
     
@@ -645,26 +645,6 @@ Seu cadastro permanece como:
 **Aguardo sua confirmação clara!** 🙏`;
   }
 }
-function analisarSeEhAjusteLegenda(mensagem, usuario) {
-  console.log('🧠 Analisando se é ajuste de legenda:', mensagem);
-  
-  const texto = mensagem.toLowerCase();
-  
-  // Se não tem modo legenda ativo, definitivamente é texto novo
-  if (!usuario.modo_legenda_ativo || !usuario.ultima_legenda_gerada) {
-    return 'texto_novo';
-  }
-  
-  // Verificar se faz mais de 10 minutos que gerou a legenda (timeout)
-  if (usuario.timestamp_legenda) {
-    const agora = new Date();
-    const timestampLegenda = new Date(usuario.timestamp_legenda);
-    const minutosDesdeUltimaLegenda = (agora - timestampLegenda) / (1000 * 60);
-    
-    if (minutosDesdeUltimaLegenda > 10) {
-      console.log('⏰ Timeout do modo legenda (>10 min)');
-      return 'texto_novo';
-    }
   }
   
   // Indicadores claros de que quer texto novo para gravar
@@ -686,8 +666,7 @@ function analisarSeEhAjusteLegenda(mensagem, usuario) {
   return 'ajuste_legenda';
 }
 
-// SISTEMA INTELIGENTE - Analisar solicitação e decidir se precisa de perguntas
-function analisarSolicitacao(solicitacao, usuario) {
+// SISTEMA INTELIGENTE - Analisar se é ajuste de legenda
 function analisarSeEhAjusteLegenda(mensagem, usuario) {
   console.log('🧠 Analisando se é ajuste de legenda:', mensagem);
   
@@ -709,6 +688,35 @@ function analisarSeEhAjusteLegenda(mensagem, usuario) {
       return 'texto_novo';
     }
   }
+
+  // SISTEMA INTELIGENTE - Analisar solicitação e decidir se precisa de perguntas
+function analisarSolicitacao(solicitacao, usuario) {
+  console.log('🧠 Analisando solicitação:', solicitacao);
+  
+  const texto = solicitacao.toLowerCase();
+  
+  // SÓ fazer perguntas se for EXTREMAMENTE vago
+  const muitoVago = (
+    (texto === 'texto' || texto === 'ideia' || texto === 'algo' || 
+     texto === 'story' || texto === 'stories' || texto === 'conteudo' || 
+     texto === 'conteúdo' || texto === 'manda') && 
+    texto.length < 20
+  );
+  
+  console.log(`📊 Análise: muito_vago=${muitoVago}, tamanho=${texto.length}`);
+  
+  if (muitoVago) {
+    return {
+      precisaPerguntas: true,
+      tipo: 'muito_vago'
+    };
+  }
+  
+  return {
+    precisaPerguntas: false,
+    tipo: 'gerar_direto'
+  };
+}
   
   // Indicadores claros de que quer texto novo para gravar
   const indicadoresTextoNovo = [
@@ -1516,7 +1524,7 @@ Responda APENAS com a legenda, sem JSON ou formatação especial.`;
       });
     }
     
-    // ATIVAR MODO LEGENDA após gerar legenda
+   // ATIVAR MODO LEGENDA após gerar legenda
     await supabase.from('usuarios')
       .update({ 
         modo_legenda_ativo: true,
@@ -1528,7 +1536,7 @@ Responda APENAS com a legenda, sem JSON ou formatação especial.`;
     
     console.log('✅ Modo legenda ativado para ajustes futuros');
     
-    // RETORNO ESPECÍFICO PARA LEGENDA - MAIS LIMPO
+    // RETORNO CORRETO PARA LEGENDA (NÃO "TEXTO PARA GRAVAR")
     return `📸 **LEGENDA PARA ESSA IMAGEM:**
 
 "${legenda}"
@@ -1620,7 +1628,7 @@ Responda APENAS com a nova legenda ajustada, sem JSON ou formatação especial.`
       })
       .eq('telefone', telefone);
     
-    // Atualizar preferências se existir
+  // Atualizar preferências se existir
     if (preferencias) {
       await salvarPreferenciasUsuario(telefone, usuario.id, {
         ...preferencias,
@@ -1630,7 +1638,7 @@ Responda APENAS com a nova legenda ajustada, sem JSON ou formatação especial.`
     
     console.log('✅ Legenda ajustada com sucesso');
     
-    // RETORNO ESPECÍFICO PARA LEGENDA AJUSTADA
+    // RETORNO CORRETO PARA LEGENDA AJUSTADA
     return `📸 **LEGENDA PARA ESSA IMAGEM:**
 
 "${legendaAjustada}"
@@ -1644,6 +1652,14 @@ Responda APENAS com a nova legenda ajustada, sem JSON ou formatação especial.`
     console.error('❌ Erro ao ajustar legenda:', error);
     
     return `❌ Ops! Tive um problema ao ajustar sua legenda.
+
+💡 **Pode tentar:**
+🔄 Falar de outra forma o ajuste que quer
+📝 Ou me contar exatamente como quer a legenda
+
+✨ *Estou aqui para ajudar!* ✨`;
+  }
+}
 
 💡 **Pode tentar:**
 🔄 Falar de outra forma o ajuste que quer
