@@ -23,11 +23,98 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
+// VALIDAÇÃO DAS VARIÁVEIS DE AMBIENTE Z-API
+function validarConfigZAPI() {
+  const instance = process.env.ZAPI_INSTANCE;
+  const token = process.env.ZAPI_TOKEN;
+  const clientToken = process.env.ZAPI_CLIENT_TOKEN;
+  
+  console.log('🔍 Validando configurações Z-API...');
+  console.log('📱 ZAPI_INSTANCE:', instance ? `${instance.substring(0, 10)}...` : 'NÃO DEFINIDA');
+  console.log('🔑 ZAPI_TOKEN:', token ? `${token.substring(0, 10)}...` : 'NÃO DEFINIDA');
+  console.log('🔐 ZAPI_CLIENT_TOKEN:', clientToken ? `${clientToken.substring(0, 10)}...` : 'NÃO DEFINIDA');
+  
+  if (!instance || !token || !clientToken) {
+    console.error('❌ ERRO: Variáveis Z-API não configuradas!');
+    return false;
+  }
+  
+  // Limpar possíveis espaços ou caracteres extras
+  process.env.ZAPI_INSTANCE = instance.trim();
+  process.env.ZAPI_TOKEN = token.trim();
+  process.env.ZAPI_CLIENT_TOKEN = clientToken.trim();
+  
+  console.log('✅ Configurações Z-API válidas');
+  return true;
+}
+
+// FUNÇÃO MELHORADA PARA ENVIO DE MENSAGENS
+async function enviarMensagemZAPI(telefone, mensagem, tentativa = 1) {
+  try {
+    // Validar configurações antes de enviar
+    if (!validarConfigZAPI()) {
+      throw new Error('Configurações Z-API inválidas');
+    }
+    
+    const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+    
+    console.log(`📤 Tentativa ${tentativa} - Enviando para: ${telefone}`);
+    console.log(`📤 URL Z-API: ${ZAPI_URL}/send-text`);
+    console.log(`📤 Client-Token (primeiros 10): ${process.env.ZAPI_CLIENT_TOKEN.substring(0, 10)}...`);
+    
+    const response = await axios.post(`${ZAPI_URL}/send-text`, {
+      phone: telefone,
+      message: mensagem
+    }, {
+      headers: {
+        'Client-Token': process.env.ZAPI_CLIENT_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000 // 10 segundos de timeout
+    });
+    
+    console.log('✅ SUCESSO! Mensagem enviada:', response.data);
+    return { sucesso: true, data: response.data };
+    
+  } catch (error) {
+    console.error(`❌ Erro na tentativa ${tentativa}:`, {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      headers: error.response?.headers
+    });
+    
+    // Se for erro 403 (token inválido), não retry
+    if (error.response?.status === 403) {
+      console.error('🚫 ERRO 403: Token inválido ou instância desconectada');
+      return { 
+        sucesso: false, 
+        erro: 'Token Z-API inválido ou instância desconectada',
+        status: 403
+      };
+    }
+    
+    // Retry para outros erros (máximo 3 tentativas)
+    if (tentativa < 3) {
+      console.log(`🔄 Tentando novamente em 2 segundos... (${tentativa + 1}/3)`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return await enviarMensagemZAPI(telefone, mensagem, tentativa + 1);
+    }
+    
+    return { 
+      sucesso: false, 
+      erro: error.message,
+      status: error.response?.status || 500
+    };
+  }
+}
+
 // SISTEMA DE APRENDIZADO - Buscar preferências do usuário
 async function buscarPreferenciasUsuario(telefone, usuarioId) {
   try {
     const { data: preferencias, error } = await supabase
-      .from('usuario_preferencias')
+      .from('preferencias_do_usuario')
       .select('*')
       .eq('telefone', telefone)
       .single();
@@ -54,7 +141,7 @@ async function analisarHistoricoUsuario(telefone, usuarioId) {
       .from('conversas')
       .select('*')
       .eq('telefone', telefone)
-      .order('created_at', { ascending: false })
+      .order('criado_em', { ascending: false })
       .limit(10);
     
     if (error || !conversas || conversas.length === 0) {
@@ -143,10 +230,10 @@ async function salvarPreferenciasUsuario(telefone, usuarioId, preferencias) {
     if (preferenciasExistentes) {
       // Atualizar existente
       const { data, error } = await supabase
-        .from('usuario_preferencias')
+        .from('preferencias_do_usuario')
         .update({
           ...preferencias,
-          updated_at: new Date(),
+          atualizado_em: new Date(),
           total_textos_gerados: (preferenciasExistentes.total_textos_gerados || 0) + 1
         })
         .eq('telefone', telefone);
@@ -158,14 +245,14 @@ async function salvarPreferenciasUsuario(telefone, usuarioId, preferencias) {
     } else {
       // Criar novo
       const { data, error } = await supabase
-        .from('usuario_preferencias')
+        .from('preferencias_do_usuario')
         .insert({
           telefone: telefone,
-          usuario_id: usuarioId,
+          id_do_usuario: usuarioId,
           ...preferencias,
           total_textos_gerados: 1,
-          created_at: new Date(),
-          updated_at: new Date()
+          criado_em: new Date(),
+          atualizado_em: new Date()
         });
       
       if (error) {
@@ -382,11 +469,11 @@ async function processarAgendamento(usuario, dadosAgendamento, telefone) {
     // Salvar no histórico
     await supabase.from('conversas').insert({
       telefone: telefone,
-      usuario_id: usuario.id,
+      id_do_usuario: usuario.ou_ia,
       mensagem_usuario: dadosAgendamento.contextoTexto,
       resposta_bot: JSON.stringify({ agendamento_id: data.id, texto_gerado: textoGerado }),
       tipo_mensagem: 'agendamento_criado',
-      created_at: new Date()
+      criado_em: new Date()
     });
     
     const dataLembreteFormatada = dadosAgendamento.dataLembrete.toLocaleString('pt-BR', {
@@ -470,6 +557,7 @@ IMPORTANTE: Retorne APENAS o texto que a pessoa vai gravar, sem explicações ex
     return `Oi, eu sou ${usuario.nome}! Como ${usuario.profissao} especialista em ${usuario.especialidade}, estou aqui para te ajudar com o que você precisar. ${usuario.empresa !== 'Profissional autônomo' ? `Aqui na ${usuario.empresa}` : 'No meu trabalho'}, eu faço questão de dar o meu melhor para você. Vem conversar comigo!`;
   }
 }
+
 function analisarMudancaCadastro(mensagem, usuario) {
   console.log('🔍 Analisando se é mudança de cadastro:', mensagem);
   
@@ -576,24 +664,24 @@ async function processarConfirmacaoMudanca(telefone, mensagem, usuario) {
         mudanca_profissao_pendente: null,
         mudanca_especialidade_pendente: null,
         aguardando_confirmacao_mudanca: false,
-        updated_at: new Date()
+        atualizado_em: new Date()
       })
       .eq('telefone', telefone);
     
     // RESETAR PREFERÊNCIAS APRENDIDAS (nova profissão = novos padrões)
     console.log('🔄 Resetando preferências aprendidas...');
-    await supabase.from('usuario_preferencias')
+    await supabase.from('preferencias_do_usuario')
       .delete()
       .eq('telefone', telefone);
     
     // Log da mudança
     await supabase.from('conversas').insert({
       telefone: telefone,
-      usuario_id: usuario.id,
+      id_do_usuario: usuario.ou_ia,
       mensagem_usuario: `[MUDANÇA DE CADASTRO CONFIRMADA] ${JSON.stringify(dadosAntigos)} → ${novaProfissao}, ${novaEspecialidade}`,
       resposta_bot: JSON.stringify({ mudanca_cadastro: true }),
       tipo_mensagem: 'mudanca_cadastro_confirmada',
-      created_at: new Date()
+      criado_em: new Date()
     });
     
     console.log(`✅ Cadastro atualizado: ${novaProfissao} - ${novaEspecialidade}`);
@@ -619,7 +707,7 @@ async function processarConfirmacaoMudanca(telefone, mensagem, usuario) {
         mudanca_profissao_pendente: null,
         mudanca_especialidade_pendente: null,
         aguardando_confirmacao_mudanca: false,
-        updated_at: new Date()
+        atualizado_em: new Date()
       })
       .eq('telefone', telefone);
     
@@ -645,6 +733,7 @@ Seu cadastro permanece como:
 **Aguardo sua confirmação clara!** 🙏`;
   }
 }
+
 function analisarSeEhAjusteLegenda(mensagem, usuario) {
   console.log('🧠 Analisando se é ajuste de legenda:', mensagem);
   
@@ -656,9 +745,9 @@ function analisarSeEhAjusteLegenda(mensagem, usuario) {
   }
   
   // Verificar se faz mais de 10 minutos que gerou a legenda (timeout)
-  if (usuario.timestamp_legenda) {
+  if (usuario.legenda_do_carinho) {
     const agora = new Date();
-    const timestampLegenda = new Date(usuario.timestamp_legenda);
+    const timestampLegenda = new Date(usuario.legenda_do_carinho);
     const minutosDesdeUltimaLegenda = (agora - timestampLegenda) / (1000 * 60);
     
     if (minutosDesdeUltimaLegenda > 10) {
@@ -688,46 +777,6 @@ function analisarSeEhAjusteLegenda(mensagem, usuario) {
 
 // SISTEMA INTELIGENTE - Analisar solicitação e decidir se precisa de perguntas
 function analisarSolicitacao(solicitacao, usuario) {
-function analisarSeEhAjusteLegenda(mensagem, usuario) {
-  console.log('🧠 Analisando se é ajuste de legenda:', mensagem);
-  
-  const texto = mensagem.toLowerCase();
-  
-  // Se não tem modo legenda ativo, definitivamente é texto novo
-  if (!usuario.modo_legenda_ativo || !usuario.ultima_legenda_gerada) {
-    return 'texto_novo';
-  }
-  
-  // Verificar se faz mais de 10 minutos que gerou a legenda (timeout)
-  if (usuario.timestamp_legenda) {
-    const agora = new Date();
-    const timestampLegenda = new Date(usuario.timestamp_legenda);
-    const minutosDesdeUltimaLegenda = (agora - timestampLegenda) / (1000 * 60);
-    
-    if (minutosDesdeUltimaLegenda > 10) {
-      console.log('⏰ Timeout do modo legenda (>10 min)');
-      return 'texto_novo';
-    }
-  }
-  
-  // Indicadores claros de que quer texto novo para gravar
-  const indicadoresTextoNovo = [
-    'texto para gravar', 'gravar um video', 'gravar um story', 'story novo', 'novo texto',
-    'agora quero', 'preciso de um texto', 'quero gravar', 'me ajuda com um texto',
-    'story animado', 'texto motivacional', 'gravar em casa', 'gravar no trabalho'
-  ];
-  
-  const querTextoNovo = indicadoresTextoNovo.some(indicador => texto.includes(indicador));
-  
-  if (querTextoNovo) {
-    console.log('✅ Detectado: quer texto novo para gravar');
-    return 'texto_novo';
-  }
-  
-  // Se chegou até aqui e está no modo legenda, provavelmente é ajuste
-  console.log('✅ Detectado: ajuste de legenda');
-  return 'ajuste_legenda';
-}
   console.log('🧠 Analisando solicitação:', solicitacao);
   
   const texto = solicitacao.toLowerCase();
@@ -775,7 +824,7 @@ function gerarPerguntasRefinamento(usuario, solicitacao) {
   
   // Verificar se é solicitação após algumas horas (perguntas extras)
   const agora = new Date();
-  const ultimaInteracao = usuario.updated_at ? new Date(usuario.updated_at) : new Date();
+  const ultimaInteracao = usuario.atualizado_em ? new Date(usuario.atualizado_em) : new Date();
   const horasDesdeUltimaInteracao = (agora - ultimaInteracao) / (1000 * 60 * 60);
   
   if (horasDesdeUltimaInteracao >= 2) {
@@ -878,7 +927,7 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
       .update({ 
         aguardando_refinamento: true,
         solicitacao_pendente: solicitacao,
-        updated_at: new Date()
+        atualizado_em: new Date()
       })
       .eq('telefone', usuario.telefone);
     
@@ -898,7 +947,7 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
       .update({ 
         aguardando_refinamento: false,
         solicitacao_pendente: null,
-        updated_at: new Date()
+        atualizado_em: new Date()
       })
       .eq('telefone', usuario.telefone);
     
@@ -916,18 +965,18 @@ async function criarTextoComIA(usuario, solicitacao, foiRefinado = false) {
   console.log('🧠 Criando texto com aprendizado individual...');
   
   // Buscar preferências do usuário
-  const preferencias = await buscarPreferenciasUsuario(usuario.telefone, usuario.id);
+  const preferencias = await buscarPreferenciasUsuario(usuario.telefone, usuario.ou_ia);
   console.log('📊 Preferências encontradas:', preferencias ? 'SIM' : 'NÃO');
   
   // Se não tem preferências suficientes, analisar histórico
   let preferenciasParaUsar = preferencias;
   if (!preferencias || (preferencias.total_textos_gerados || 0) < 3) {
     console.log('🔍 Analisando histórico para detectar padrões...');
-    const padroes = await analisarHistoricoUsuario(usuario.telefone, usuario.id);
+    const padroes = await analisarHistoricoUsuario(usuario.telefone, usuario.ou_ia);
     
     if (padroes) {
       // Salvar padrões detectados
-      await salvarPreferenciasUsuario(usuario.telefone, usuario.id, padroes);
+      await salvarPreferenciasUsuario(usuario.telefone, usuario.ou_ia, padroes);
       preferenciasParaUsar = padroes;
     }
   }
@@ -991,22 +1040,21 @@ Responda APENAS com o JSON válido.`;
     // Salvar interação no histórico
     await supabase.from('conversas').insert({
       telefone: usuario.telefone,
-      usuario_id: usuario.id,
+      id_do_usuario: usuario.ou_ia,
       mensagem_usuario: solicitacao,
       resposta_bot: JSON.stringify(resultado),
       tipo_mensagem: foiRefinado ? 'texto_refinado' : 'texto_direto',
-      created_at: new Date()
+      criado_em: new Date()
     });
     
     // Atualizar contador de textos gerados
     if (preferenciasParaUsar) {
-      await salvarPreferenciasUsuario(usuario.telefone, usuario.id, {
+      await salvarPreferenciasUsuario(usuario.telefone, usuario.ou_ia, {
         ...preferenciasParaUsar,
         ultima_interacao: new Date()
       });
     }
     
-    // RETORNO ESPECÍFICO PARA TEXTO DE STORY
     // RETORNO ESPECÍFICO PARA TEXTO DE STORY
     return `📱 **TEXTO PARA GRAVAR:**
 "${resultado.texto_para_gravar}"
@@ -1062,7 +1110,7 @@ Após o pagamento, você receberá acesso imediato! ✨`;
     console.log(`✅ Usuário completo: ${usuario.nome}`);
     
     // Verificar se tem imagem pendente para processar
-    if (usuario.aguardando_confirmacao_imagem && usuario.imagem_pendente) {
+    if (usuario.aguardando_confirmacao && usuario.imagem_pendente) {
       console.log('📸 Processando confirmação de imagem...');
       
       const respostaLower = mensagem.toLowerCase();
@@ -1074,9 +1122,9 @@ Após o pagamento, você receberá acesso imediato! ✨`;
         // Limpar estado de imagem pendente
         await supabase.from('usuarios')
           .update({ 
-            aguardando_confirmacao_imagem: false,
+            aguardando_confirmacao: false,
             imagem_pendente: null,
-            updated_at: new Date()
+            atualizado_em: new Date()
           })
           .eq('telefone', telefone);
         
@@ -1092,9 +1140,9 @@ Após o pagamento, você receberá acesso imediato! ✨`;
         // Limpar estado de imagem pendente
         await supabase.from('usuarios')
           .update({ 
-            aguardando_confirmacao_imagem: false,
+            aguardando_confirmacao: false,
             imagem_pendente: null,
-            updated_at: new Date()
+            atualizado_em: new Date()
           })
           .eq('telefone', telefone);
         
@@ -1140,7 +1188,7 @@ Me diga claramente o que prefere! 😊`;
           mudanca_profissao_pendente: analiseMudanca.novaProfissao,
           mudanca_especialidade_pendente: analiseMudanca.novaEspecialidade,
           aguardando_confirmacao_mudanca: true,
-          updated_at: new Date()
+          atualizado_em: new Date()
         })
         .eq('telefone', telefone);
       
@@ -1173,6 +1221,7 @@ Me diga claramente o que prefere! 😊`;
       console.log('✅ Detectada mudança temporária - seguindo para geração normal');
       // Continua o fluxo normal, mas com contexto temporário
     }
+    
     if (usuario.modo_legenda_ativo && usuario.ultima_legenda_gerada) {
       console.log('📸 Usuário está no modo legenda, analisando intenção...');
       
@@ -1195,8 +1244,8 @@ Solicitação de ajuste: ${mensagem}`;
           .update({ 
             modo_legenda_ativo: false,
             ultima_legenda_gerada: null,
-            timestamp_legenda: null,
-            updated_at: new Date()
+            legenda_do_carinho: null,
+            atualizado_em: new Date()
           })
           .eq('telefone', telefone);
         
@@ -1437,7 +1486,7 @@ async function processarImagem(imageUrl, telefone, contextoAdicional = '') {
     }
     
     // Buscar preferências para personalizar legenda
-    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.id);
+    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.ou_ia);
     
     console.log('📸 Enviando para GPT-4 Vision...');
     console.log('🕐 Início Vision:', new Date().toISOString());
@@ -1501,16 +1550,16 @@ Responda APENAS com a legenda, sem JSON ou formatação especial.`;
     // Salvar interação no histórico
     await supabase.from('conversas').insert({
       telefone: usuario.telefone,
-      usuario_id: usuario.id,
+      id_do_usuario: usuario.ou_ia,
       mensagem_usuario: '[IMAGEM ANALISADA]',
       resposta_bot: JSON.stringify({ legenda_para_postar: legenda }),
       tipo_mensagem: 'legenda_imagem',
-      created_at: new Date()
+      criado_em: new Date()
     });
     
     // Atualizar preferências se existir
     if (preferencias) {
-      await salvarPreferenciasUsuario(telefone, usuario.id, {
+      await salvarPreferenciasUsuario(telefone, usuario.ou_ia, {
         ...preferencias,
         ultima_interacao: new Date()
       });
@@ -1521,8 +1570,8 @@ Responda APENAS com a legenda, sem JSON ou formatação especial.`;
       .update({ 
         modo_legenda_ativo: true,
         ultima_legenda_gerada: legenda,
-        timestamp_legenda: new Date(),
-        updated_at: new Date()
+        legenda_do_carinho: new Date(),
+        atualizado_em: new Date()
       })
       .eq('telefone', telefone);
     
@@ -1562,7 +1611,7 @@ async function processarAjusteLegenda(usuario, contextoAjuste, telefone) {
     console.log('🔄 Processando ajuste de legenda...');
     
     // Buscar preferências para personalizar ajuste
-    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.id);
+    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.ou_ia);
     
     const prompt = `Você é o Luke Stories, especialista em ajustar legendas para ${usuario.profissao}.
 
@@ -1604,25 +1653,25 @@ Responda APENAS com a nova legenda ajustada, sem JSON ou formatação especial.`
     // Salvar interação no histórico
     await supabase.from('conversas').insert({
       telefone: usuario.telefone,
-      usuario_id: usuario.id,
+      id_do_usuario: usuario.ou_ia,
       mensagem_usuario: contextoAjuste,
       resposta_bot: JSON.stringify({ legenda_ajustada: legendaAjustada }),
       tipo_mensagem: 'ajuste_legenda',
-      created_at: new Date()
+      criado_em: new Date()
     });
     
     // Atualizar a última legenda gerada com a nova versão
     await supabase.from('usuarios')
       .update({ 
         ultima_legenda_gerada: legendaAjustada,
-        timestamp_legenda: new Date(),
-        updated_at: new Date()
+        legenda_do_carinho: new Date(),
+        atualizado_em: new Date()
       })
       .eq('telefone', telefone);
     
     // Atualizar preferências se existir
     if (preferencias) {
-      await salvarPreferenciasUsuario(telefone, usuario.id, {
+      await salvarPreferenciasUsuario(telefone, usuario.ou_ia, {
         ...preferencias,
         ultima_interacao: new Date()
       });
@@ -1705,11 +1754,12 @@ async function processarAudio(audioUrl) {
 // Rota de teste
 app.get('/', (req, res) => {
   res.json({ 
-    message: 'Luke Stories V13 API funcionando!',
+    message: 'Luke Stories V14 API funcionando!',
     status: 'online',
     timestamp: new Date().toISOString(),
-    versao: '13.0',
-    sistema_interativo: 'ativo'
+    versao: '14.0',
+    sistema_interativo: 'ativo',
+    zapi_configurado: validarConfigZAPI()
   });
 });
 
@@ -1730,6 +1780,49 @@ app.get('/test-simple', async (req, res) => {
     res.json({ 
       message: 'Erro capturado',
       erro: error.message 
+    });
+  }
+});
+
+// ROTA PARA TESTAR Z-API
+app.get('/test-zapi', async (req, res) => {
+  try {
+    console.log('🧪 Testando configurações Z-API...');
+    
+    if (!validarConfigZAPI()) {
+      return res.status(400).json({
+        erro: 'Configurações Z-API inválidas',
+        message: 'Verifique as variáveis de ambiente ZAPI_INSTANCE, ZAPI_TOKEN e ZAPI_CLIENT_TOKEN'
+      });
+    }
+    
+    const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+    
+    // Testar status da instância
+    const response = await axios.get(`${ZAPI_URL}/status`, {
+      headers: {
+        'Client-Token': process.env.ZAPI_CLIENT_TOKEN
+      },
+      timeout: 10000
+    });
+    
+    console.log('✅ Teste Z-API bem-sucedido:', response.data);
+    
+    res.json({
+      message: 'Z-API funcionando!',
+      status: response.data,
+      instance: process.env.ZAPI_INSTANCE.substring(0, 10) + '...',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro no teste Z-API:', error.response?.data || error.message);
+    
+    res.status(500).json({
+      erro: 'Falha no teste Z-API',
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
     });
   }
 });
@@ -1815,7 +1908,7 @@ app.post('/webhook/ticto', async (req, res) => {
         telefone: telefoneAjustado,
         email: email,
         status: 'pago',
-        created_at: new Date(),
+        criado_em: new Date(),
         data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
         data_pagamento: new Date(),
         valor_pago: valor
@@ -1824,7 +1917,7 @@ app.post('/webhook/ticto', async (req, res) => {
       console.log('✅ Novo usuário criado com status PAGO');
     }
     
-    // Enviar mensagem de boas-vindas
+    // Enviar mensagem de boas-vindas usando a nova função
     const mensagemBoasVindas = `🎉 *Olá! Eu sou o Luke Stories!*
 
 Seu assistente pessoal para criar textos e ideias que vão te ajudar a gravar conteúdos incríveis e fazer sua imagem pessoal e empresa crescerem! 🚀
@@ -1849,31 +1942,32 @@ Preciso de algumas informações importantes:
 
 Vamos começar? Me mande suas informações! 😊`;
 
-    // Enviar via Z-API
-    const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+    const resultadoEnvio = await enviarMensagemZAPI(telefoneAjustado, mensagemBoasVindas);
     
-    await axios.post(`${ZAPI_URL}/send-text`, {
-      phone: telefoneAjustado,
-      message: mensagemBoasVindas
-    }, {
-      headers: {
-        'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-      }
-    });
-    
-    console.log('✅ Mensagem de boas-vindas enviada para:', telefoneAjustado);
-    
-    res.status(200).json({ 
-      status: 'success',
-      message: 'Usuário ativado e mensagem enviada'
-    });
+    if (resultadoEnvio.sucesso) {
+      console.log('✅ Mensagem de boas-vindas enviada para:', telefoneAjustado);
+      
+      res.status(200).json({ 
+        status: 'success',
+        message: 'Usuário ativado e mensagem enviada'
+      });
+    } else {
+      console.error('❌ Falha ao enviar mensagem de boas-vindas');
+      
+      res.status(200).json({ 
+        status: 'user_activated_message_failed',
+        message: 'Usuário ativado mas falha no envio da mensagem',
+        erro_envio: resultadoEnvio.erro
+      });
+    }
     
   } catch (error) {
+    console.error('❌ Erro no webhook Ticto:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Webhook Z-API - VERSÃO COM MEMÓRIA INTELIGENTE
+// Webhook Z-API - VERSÃO COM MEMÓRIA INTELIGENTE E ENVIO MELHORADO
 app.post('/webhook/zapi', async (req, res) => {
   try {
     console.log('🔔 === WEBHOOK Z-API RECEBIDO ===');
@@ -1914,19 +2008,15 @@ https://payment.ticto.app/O6D37000C
 
 Após o pagamento, você receberá acesso imediato! ✨`;
 
-          // Enviar resposta
-          const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+          // Enviar resposta usando a nova função
+          const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
           
-          await axios.post(`${ZAPI_URL}/send-text`, {
-            phone: telefone,
-            message: resposta
-          }, {
-            headers: {
-              'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-            }
-          });
+          if (resultadoEnvio.sucesso) {
+            console.log('✅ Resposta de acesso restrito enviada');
+          } else {
+            console.error('❌ Falha ao enviar resposta de acesso restrito');
+          }
           
-          console.log('✅ Resposta de acesso restrito enviada');
           return res.status(200).json({ status: 'access_denied' });
         }
         
@@ -1948,24 +2038,20 @@ O que prefere? 😊`;
         await supabase.from('usuarios')
           .update({ 
             imagem_pendente: webhook.image.imageUrl,
-            aguardando_confirmacao_imagem: true,
-            updated_at: new Date()
+            aguardando_confirmacao: true,
+            atualizado_em: new Date()
           })
           .eq('telefone', telefone);
 
-        // Enviar resposta
-        const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+        // Enviar resposta usando a nova função
+        const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
         
-        await axios.post(`${ZAPI_URL}/send-text`, {
-          phone: telefone,
-          message: resposta
-        }, {
-          headers: {
-            'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-          }
-        });
+        if (resultadoEnvio.sucesso) {
+          console.log('✅ Pergunta sobre legenda enviada');
+        } else {
+          console.error('❌ Falha ao enviar pergunta sobre legenda');
+        }
         
-        console.log('✅ Pergunta sobre legenda enviada');
         return res.status(200).json({ status: 'image_confirmation_sent' });
       }
       
@@ -1984,19 +2070,15 @@ Infelizmente, não consigo processar vídeos ou documentos.
 
 💬 *Mande sua solicitação por texto, áudio ou foto que eu crio conteúdo incrível para você!* ✨`;
 
-        // Enviar resposta
-        const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+        // Enviar resposta usando a nova função
+        const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
         
-        await axios.post(`${ZAPI_URL}/send-text`, {
-          phone: telefone,
-          message: resposta
-        }, {
-          headers: {
-            'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-          }
-        });
+        if (resultadoEnvio.sucesso) {
+          console.log('✅ Resposta sobre mídia não suportada enviada');
+        } else {
+          console.error('❌ Falha ao enviar resposta sobre mídia não suportada');
+        }
         
-        console.log('✅ Resposta sobre mídia não suportada enviada');
         return res.status(200).json({ status: 'media_not_supported' });
       }
       
@@ -2029,24 +2111,19 @@ Infelizmente, não consigo processar vídeos ou documentos.
       console.log('✅ Resposta preparada, enviando...');
       console.log('📤 Enviando resposta via Z-API...');
       
-      // Enviar resposta
-      const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+      // Enviar resposta usando a nova função melhorada
+      const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
       
-      try {
-        const response = await axios.post(`${ZAPI_URL}/send-text`, {
-          phone: telefone,
-          message: resposta
-        }, {
-          headers: {
-            'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-          }
-        });
+      if (resultadoEnvio.sucesso) {
+        console.log('✅ SUCESSO! Mensagem enviada com sucesso');
+      } else {
+        console.error('❌ FALHA no envio da mensagem:', resultadoEnvio.erro);
         
-        console.log('✅ SUCESSO! Mensagem enviada:', response.data);
-      } catch (apiError) {
-        console.error('❌ Erro Z-API:', apiError.response?.data || apiError.message);
-        console.error('❌ Status Code:', apiError.response?.status);
-        console.error('❌ Response Headers:', apiError.response?.headers);
+        // Log detalhado do erro para debug
+        if (resultadoEnvio.status === 403) {
+          console.error('🚫 ERRO 403: Problema de autenticação Z-API');
+          console.error('💡 Verifique: ZAPI_CLIENT_TOKEN, instância conectada, assinatura ativa');
+        }
       }
     } else {
       console.log('🚫 Mensagem ignorada (fromMe ou sem phone)');
@@ -2054,17 +2131,79 @@ Infelizmente, não consigo processar vídeos ou documentos.
     
     res.status(200).json({ status: 'processed' });
   } catch (error) {
-    console.error('💥 Erro geral:', error);
+    console.error('💥 Erro geral no webhook:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// NOVA ROTA - Health Check
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'online',
+    timestamp: new Date().toISOString(),
+    version: '14.0',
+    services: {
+      supabase: 'connected',
+      openai: 'connected',
+      zapi: validarConfigZAPI() ? 'configured' : 'not_configured'
+    }
+  });
+});
+
+// NOVA ROTA - Status detalhado
+app.get('/status', async (req, res) => {
+  try {
+    // Testar Supabase
+    const { data: supabaseTest } = await supabase
+      .from('usuarios')
+      .select('ou_ia')
+      .limit(1);
+    
+    // Testar OpenAI (sem fazer chamada real para economizar)
+    const openaiStatus = process.env.OPENAI_API_KEY ? 'configured' : 'not_configured';
+    
+    // Testar Z-API
+    const zapiStatus = validarConfigZAPI() ? 'configured' : 'not_configured';
+    
+    res.json({
+      status: 'operational',
+      timestamp: new Date().toISOString(),
+      version: '14.0',
+      services: {
+        supabase: supabaseTest ? 'connected' : 'error',
+        openai: openaiStatus,
+        zapi: zapiStatus
+      },
+      stats: {
+        total_usuarios: supabaseTest ? supabaseTest.length : 0
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor Luke Stories V13 rodando na porta ${PORT}`);
+  console.log(`🚀 Servidor Luke Stories V14 rodando na porta ${PORT}`);
   console.log('📱 Webhook Z-API: /webhook/zapi');
   console.log('💰 Webhook Ticto: /webhook/ticto');
+  console.log('🔧 Health Check: /health');
+  console.log('📊 Status: /status');
+  console.log('🧪 Teste Z-API: /test-zapi');
   console.log('✅ Supabase configurado!');
   console.log('🤖 OpenAI configurado!');
+  
+  // Validar Z-API na inicialização
+  if (validarConfigZAPI()) {
+    console.log('📞 Z-API configurado!');
+  } else {
+    console.error('❌ Z-API NÃO configurado - verifique as variáveis de ambiente!');
+  }
+  
   console.log('🎯 Sistema interativo ATIVO!');
   console.log('🔥 BOT PRONTO PARA FUNCIONAR!');
 });
