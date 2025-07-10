@@ -5,6 +5,34 @@ const OpenAI = require('openai');
 const axios = require('axios');
 require('dotenv').config();
 
+
+// 🔁 Bloco de Memória Curta e Pontuação Invisível
+
+const frasesCurtasPositivas = ['boa', 'valeu', 'ótimo', 'top', 'perfeito', 'show', 'legal', 'obrigado', 'obrigada'];
+const frasesCurtasNegativas = ['não gostei', 'muito longo', 'manda outro', 'ajusta', 'tem menor'];
+
+async function atualizarScoreDeSatisfacao(telefone, mensagem, scoreAtual = 0) {
+  const texto = mensagem.toLowerCase();
+  if (frasesCurtasPositivas.some(p => texto.includes(p))) scoreAtual += 1;
+  if (frasesCurtasNegativas.some(n => texto.includes(n))) scoreAtual -= 1;
+
+  await supabase.from('usuario_preferencias').update({ pontuacao_satisfacao: scoreAtual }).eq('telefone', telefone);
+}
+
+function detectarFinalizacaoDeConversa(mensagem) {
+  const texto = mensagem.toLowerCase().trim();
+  return frasesCurtasPositivas.includes(texto);
+}
+
+function calcularSimilaridade(textoA, textoB) {
+  if (!textoA || !textoB) return 0;
+  const palavrasA = new Set(textoA.toLowerCase().split(' '));
+  const palavrasB = new Set(textoB.toLowerCase().split(' '));
+  const intersecao = [...palavrasA].filter(p => palavrasB.has(p));
+  return intersecao.length / Math.max(palavrasA.size, palavrasB.size);
+}
+
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
