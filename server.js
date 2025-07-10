@@ -645,7 +645,6 @@ Seu cadastro permanece como:
 **Aguardo sua confirmação clara!** 🙏`;
   }
 }
-  }
   
   // Indicadores claros de que quer texto novo para gravar
   const indicadoresTextoNovo = [
