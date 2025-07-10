@@ -1,4 +1,860 @@
-const express = require('express');
+return `🎉 *Perfeito, ${usuario.nome}!*
+
+Agora tenho tudo que preciso:
+👤 **Nome:** ${usuario.nome}
+💼 **Profissão:** ${dadosProfissionais.profissao}
+🎯 **Especialidade:** ${dadosProfissionais.especialidade}
+🏢 **Empresa:** ${empresa}
+
+🚀 *AGORA ESTAMOS PRONTOS!*
+
+💬 *Como usar:*
+📱 "Preciso de um texto animado para gravar em casa"
+🛍️ "Estou no consultório, quero uma dica sobre [assunto]"
+🎯 "Quero algo promocional para meus serviços"
+
+*Pode mandar por áudio!* 🎤
+
+✨ *Vamos começar? Me mande sua primeira solicitação!* ✨`;
+  }
+  
+  return "Algo deu errado, pode tentar novamente?";
+}
+
+// FUNÇÃO CORRIGIDA - Extrair nome sem confundir com profissão
+function extrairNome(mensagem) {
+  console.log('🔍 Extraindo nome de:', mensagem);
+  
+  // Se mensagem começa com padrões de profissão, NÃO extrair nome
+  const padroesProfissao = [
+    /^sou\s+[a-zA-ZÀ-ÿ]+/i,
+    /^trabalho\s+(como|com|de)/i,
+    /^atuo\s+(como|na|no)/i,
+    /^formado\s+em/i,
+    /especialista\s+em/i,
+    /^minha\s+profissão/i,
+    /^área\s+de/i
+  ];
+  
+  // Verificar se é profissão
+  const eProfissao = padroesProfissao.some(padrao => padrao.test(mensagem));
+  if (eProfissao) {
+    console.log('❌ Detectado como profissão, não extraindo nome');
+    return null;
+  }
+  
+  // Padrões para nomes (sua lógica original mantida)
+  const padroes = [
+    /(?:me chamo|meu nome é|sou |eu sou )\s*([A-Za-zÀ-ÿ\s]{2,30})$/i,
+    /^([A-Za-zÀ-ÿ\s]{2,30})$/i // Nome sozinho
+  ];
+  
+  for (const padrao of padroes) {
+    const match = mensagem.match(padrao);
+    if (match && !mensagem.toLowerCase().includes('profiss') && !mensagem.toLowerCase().includes('trabalho')) {
+      const nome = match[1].trim();
+      console.log('✅ Nome extraído:', nome);
+      return nome;
+    }
+  }
+  
+  console.log('❌ Nenhum nome encontrado');
+  return null;
+}
+
+// FUNÇÃO MELHORADA - Extrair profissão e especialidade universal
+function extrairProfissaoEspecialidade(mensagem) {
+  console.log('🔍 Extraindo profissão de:', mensagem);
+  
+  let profissao = mensagem;
+  let especialidade = null;
+  
+  // Remover prefixos comuns
+  profissao = profissao.replace(/^(sou |trabalho como |atuo como |me formei em |formado em |especialista em |área de )/i, '');
+  
+  // Buscar padrões de especialidade
+  const regexEspecialidade = /(.*?)(?:,|\s+)(?:especialista em|especialidade em|trabalho com|foco em|área de|focado em|focada em|especializado em|especializada em|que trabalha com)\s+(.+)/i;
+  const match = mensagem.match(regexEspecialidade);
+  
+  if (match) {
+    profissao = match[1].trim();
+    especialidade = match[2].trim();
+  } else {
+    // Se não tem especialidade clara, usar "Geral"
+    especialidade = 'Geral';
+  }
+  
+  console.log(`✅ Profissão: "${profissao}" | Especialidade: "${especialidade}"`);
+  
+  return {
+    profissao: profissao,
+    especialidade: especialidade
+  };
+}
+
+// FUNÇÃO CORRIGIDA - Processar imagem (LEGENDA PARA IMAGEM)
+async function processarImagem(imageUrl, telefone, contextoAdicional = '') {
+  try {
+    console.log('📸 Baixando imagem:', imageUrl);
+    console.log('🕐 Início download:', new Date().toISOString());
+    
+    const imageResponse = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 15000
+    });
+    
+    console.log('✅ Imagem baixada!');
+    console.log('📊 Tamanho do arquivo:', imageResponse.data.byteLength, 'bytes');
+    
+    // Converter para base64
+    const base64Image = Buffer.from(imageResponse.data).toString('base64');
+    const dataUrl = `data:image/jpeg;base64,${base64Image}`;
+    
+    console.log('🕐 Fim download:', new Date().toISOString());
+    console.log('✅ Imagem convertida para base64');
+    
+    // Buscar usuário para personalizar análise
+    const usuario = await buscarUsuario(telefone);
+    if (!usuario) {
+      return "❌ Erro ao processar imagem. Usuário não encontrado.";
+    }
+    
+    // Buscar preferências para personalizar legenda
+    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.ou_ia);
+    
+    console.log('📸 Enviando para GPT-4 Vision...');
+    console.log('🕐 Início Vision:', new Date().toISOString());
+    
+    const prompt = `Você é o Luke Stories, especialista em criar legendas para ${usuario.profissao}.
+
+DADOS DO USUÁRIO:
+- Nome: ${usuario.nome}
+- Profissão: ${usuario.profissao}
+- Especialidade: ${usuario.especialidade}
+- Empresa: ${usuario.empresa || 'Profissional autônomo'}
+
+${preferencias ? `PREFERÊNCIAS APRENDIDAS:
+- Tom preferido: ${preferencias.tom_preferido || 'equilibrado'}
+- Tamanho: ${preferencias.tamanho_preferido || 'médio'}
+- Call-to-action: ${preferencias.call_to_action || 'sutil'}
+- Forma de chamar seguidores: ${preferencias.forma_chamar_seguidores || 'pessoal'}` : ''}
+
+${contextoAdicional ? `CONTEXTO ESPECÍFICO SOLICITADO: ${contextoAdicional}` : ''}
+
+INSTRUÇÕES PARA LEGENDA:
+1. Analise a imagem profissionalmente no contexto de ${usuario.profissao}
+2. Crie uma legenda criativa e envolvente
+3. Use o tom ${preferencias?.tom_preferido || 'profissional mas acessível'}
+4. Tamanho ${preferencias?.tamanho_preferido || 'médio'} (80-120 palavras)
+5. Inclua call-to-action ${preferencias?.call_to_action || 'sutil'}
+6. Seja específico para a área de ${usuario.especialidade}
+7. Use linguagem natural e envolvente
+
+IMPORTANTE: Retorne APENAS a legenda pronta para postar, sem explicações extras.
+
+Responda APENAS com a legenda, sem JSON ou formatação especial.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: prompt
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: dataUrl
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 300
+    });
+
+    console.log('🕐 Fim Vision:', new Date().toISOString());
+    console.log('✅ Análise da imagem concluída');
+
+    const legenda = completion.choices[0].message.content.trim();
+    
+    // Salvar interação no histórico
+    await supabase.from('conversas').insert({
+      telefone: usuario.telefone,
+      id_do_usuario: usuario.ou_ia,
+      mensagem_usuario: '[IMAGEM ANALISADA]',
+      resposta_bot: JSON.stringify({ legenda_para_postar: legenda }),
+      tipo_mensagem: 'legenda_imagem',
+      criado_em: new Date()
+    });
+    
+    // Atualizar preferências se existir
+    if (preferencias) {
+      await salvarPreferenciasUsuario(telefone, usuario.ou_ia, {
+        ...preferencias,
+        ultima_interacao: new Date()
+      });
+    }
+    
+    // ATIVAR MODO LEGENDA após gerar legenda
+    await supabase.from('usuarios')
+      .update({ 
+        modo_legenda_ativo: true,
+        ultima_legenda_gerada: legenda,
+        legenda_do_carinho: new Date(),
+        atualizado_em: new Date()
+      })
+      .eq('telefone', telefone);
+    
+    console.log('✅ Modo legenda ativado para ajustes futuros');
+    
+    // RETORNO CORRETO PARA LEGENDA (NÃO "TEXTO PARA GRAVAR")
+    return `📸 **LEGENDA PARA ESSA IMAGEM:**
+
+"${legenda}"
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de ajustes na legenda? Só me falar!* ✨`;
+
+  } catch (error) {
+    console.log('🕐 Erro em:', new Date().toISOString());
+    console.error('❌ Erro detalhado:', {
+      message: error.message,
+      code: error.code,
+      status: error.status
+    });
+    
+    return `❌ Ops! Tive um problema ao analisar sua imagem.
+
+💡 **Pode tentar:**
+🔄 Enviar a imagem novamente
+📝 Ou me contar o que tem na foto que eu crio uma legenda
+
+✨ *Estou aqui para ajudar!* ✨`;
+  }
+}
+
+// NOVA FUNÇÃO - Processar ajuste de legenda
+async function processarAjusteLegenda(usuario, contextoAjuste, telefone) {
+  try {
+    console.log('🔄 Processando ajuste de legenda...');
+    
+    // Buscar preferências para personalizar ajuste
+    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.ou_ia);
+    
+    const prompt = `Você é o Luke Stories, especialista em ajustar legendas para ${usuario.profissao}.
+
+DADOS DO USUÁRIO:
+- Nome: ${usuario.nome}
+- Profissão: ${usuario.profissao}
+- Especialidade: ${usuario.especialidade}
+- Empresa: ${usuario.empresa || 'Profissional autônomo'}
+
+${preferencias ? `PREFERÊNCIAS APRENDIDAS:
+- Tom preferido: ${preferencias.tom_preferido || 'equilibrado'}
+- Tamanho: ${preferencias.tamanho_preferido || 'médio'}
+- Call-to-action: ${preferencias.call_to_action || 'sutil'}
+- Forma de chamar seguidores: ${preferencias.forma_chamar_seguidores || 'pessoal'}` : ''}
+
+CONTEXTO DO AJUSTE:
+${contextoAjuste}
+
+INSTRUÇÕES PARA AJUSTE:
+1. Analise a legenda anterior e a solicitação de ajuste
+2. Faça EXATAMENTE o que o usuário pediu (diminuir, aumentar, mudar tom, etc.)
+3. Mantenha a essência da legenda original
+4. Use as preferências do usuário como base
+5. Seja específico para a área de ${usuario.especialidade}
+6. Use linguagem natural e envolvente
+
+IMPORTANTE: Retorne APENAS a legenda ajustada, sem explicações extras.
+
+Responda APENAS com a nova legenda ajustada, sem JSON ou formatação especial.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 300
+    });
+
+    const legendaAjustada = completion.choices[0].message.content.trim();
+    
+    // Salvar interação no histórico
+    await supabase.from('conversas').insert({
+      telefone: usuario.telefone,
+      id_do_usuario: usuario.ou_ia,
+      mensagem_usuario: contextoAjuste,
+      resposta_bot: JSON.stringify({ legenda_ajustada: legendaAjustada }),
+      tipo_mensagem: 'ajuste_legenda',
+      criado_em: new Date()
+    });
+    
+    // Atualizar a última legenda gerada com a nova versão
+    await supabase.from('usuarios')
+      .update({ 
+        ultima_legenda_gerada: legendaAjustada,
+        legenda_do_carinho: new Date(),
+        atualizado_em: new Date()
+      })
+      .eq('telefone', telefone);
+    
+    // Atualizar preferências se existir
+    if (preferencias) {
+      await salvarPreferenciasUsuario(telefone, usuario.ou_ia, {
+        ...preferencias,
+        ultima_interacao: new Date()
+      });
+    }
+    
+    console.log('✅ Legenda ajustada com sucesso');
+    
+    // RETORNO CORRETO PARA LEGENDA AJUSTADA
+    return `📸 **LEGENDA PARA ESSA IMAGEM:**
+
+"${legendaAjustada}"
+
+---
+📋 *Para copiar:* Mantenha pressionado o texto acima
+
+✨ *Precisa de mais ajustes? Só me falar!* ✨`;
+
+  } catch (error) {
+    console.error('❌ Erro ao ajustar legenda:', error);
+    
+    return `❌ Ops! Tive um problema ao ajustar sua legenda.
+
+💡 **Pode tentar:**
+🔄 Falar de outra forma o ajuste que quer
+📝 Ou me contar exatamente como quer a legenda
+
+✨ *Estou aqui para ajudar!* ✨`;
+  }
+}
+
+async function processarAudio(audioUrl) {
+  try {
+    console.log('🎵 Baixando áudio:', audioUrl);
+    console.log('🕐 Início download:', new Date().toISOString());
+    
+    const audioResponse = await axios.get(audioUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000
+    });
+    
+    console.log('✅ Áudio baixado!');
+    console.log('📊 Tamanho do arquivo:', audioResponse.data.byteLength, 'bytes');
+    console.log('🕐 Fim download:', new Date().toISOString());
+    
+    console.log('🎵 Enviando para OpenAI Whisper...');
+    console.log('🕐 Início Whisper:', new Date().toISOString());
+    
+    const fs = require('fs');
+    const path = require('path');
+    const tempPath = path.join('/tmp', `audio_${Date.now()}.ogg`);
+    
+    fs.writeFileSync(tempPath, Buffer.from(audioResponse.data));
+    console.log('📁 Arquivo salvo em:', tempPath);
+    
+    const audioStream = fs.createReadStream(tempPath);
+    
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioStream,
+      model: 'whisper-1',
+      language: 'pt'
+    });
+    
+    fs.unlinkSync(tempPath);
+    console.log('🗑️ Arquivo temporário removido');
+    
+    console.log('🕐 Fim Whisper:', new Date().toISOString());
+    console.log('✅ Texto transcrito:', transcription.text);
+    return transcription.text;
+  } catch (error) {
+    console.log('🕐 Erro em:', new Date().toISOString());
+    console.error('❌ Erro detalhado:', {
+      message: error.message,
+      code: error.code,
+      status: error.status
+    });
+    return null;
+  }
+}
+
+// Rota de teste
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Luke Stories V15 API funcionando!',
+    status: 'online',
+    timestamp: new Date().toISOString(),
+    versao: '15.0',
+    sistema_interativo: 'ativo',
+    zapi_configurado: validarConfigZAPI(),
+    melhorias: [
+      'Sistema de perguntas menos invasivo',
+      'Separação clara: TEXTO vs LEGENDA',
+      'Nome de tabela corrigido',
+      'Aprendizado individual funcionando'
+    ]
+  });
+});
+
+// Teste simples do banco
+app.get('/test-simple', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('ou_ia')
+      .limit(1);
+    
+    res.json({ 
+      message: 'Banco funcionando!',
+      conexao: error ? 'erro' : 'sucesso',
+      erro: error?.message || null
+    });
+  } catch (error) {
+    res.json({ 
+      message: 'Erro capturado',
+      erro: error.message 
+    });
+  }
+});
+
+// ROTA PARA TESTAR Z-API
+app.get('/test-zapi', async (req, res) => {
+  try {
+    console.log('🧪 Testando configurações Z-API...');
+    
+    if (!validarConfigZAPI()) {
+      return res.status(400).json({
+        erro: 'Configurações Z-API inválidas',
+        message: 'Verifique as variáveis de ambiente ZAPI_INSTANCE, ZAPI_TOKEN e ZAPI_CLIENT_TOKEN'
+      });
+    }
+    
+    const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
+    
+    // Testar status da instância
+    const response = await axios.get(`${ZAPI_URL}/status`, {
+      headers: {
+        'Client-Token': process.env.ZAPI_CLIENT_TOKEN
+      },
+      timeout: 10000
+    });
+    
+    console.log('✅ Teste Z-API bem-sucedido:', response.data);
+    
+    res.json({
+      message: 'Z-API funcionando!',
+      status: response.data,
+      instance: process.env.ZAPI_INSTANCE.substring(0, 10) + '...',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro no teste Z-API:', error.response?.data || error.message);
+    
+    res.status(500).json({
+      erro: 'Falha no teste Z-API',
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+  }
+});
+
+// Webhook Ticto - INTEGRAÇÃO COM PAGAMENTO E SEGURANÇA
+app.post('/webhook/ticto', async (req, res) => {
+  try {
+    console.log('💰 Webhook Ticto recebido:', req.body);
+    
+    // VALIDAR TOKEN DE SEGURANÇA TICTO
+    const tokenRecebido = req.headers['x-ticto-token'] || req.body.token || req.headers.authorization;
+    const tokenEsperado = 'r8DC0BxIsRI2R22zaDcMheURjgzhKXhcRjpa74Lugt39ftl2vir5qtMLwN5zM286B4ApVfYNFHrPylcnSylY7JF9VLF2WJbOvwp4';
+    
+    if (!tokenRecebido || tokenRecebido !== tokenEsperado) {
+      console.error('❌ Token inválido ou não fornecido');
+      console.error('Token recebido:', tokenRecebido);
+      return res.status(401).json({ error: 'Token de autenticação inválido' });
+    }
+    
+    console.log('✅ Token Ticto validado com sucesso');
+    
+    const { email, nome, valor, status, customer, phone } = req.body;
+    
+    // Extrair telefone do formato da Ticto
+    let telefone = null;
+    
+    if (req.body.telefone) {
+      // Formato direto
+      telefone = req.body.telefone;
+    } else if (phone && phone.number) {
+      // Formato da Ticto: phone: { ddd: "999", ddi: "+55", number: "99568246" }
+      telefone = `55${phone.ddd}${phone.number}`;
+    } else if (customer && customer.phone) {
+      // Outro formato possível
+      telefone = customer.phone;
+    }
+    
+    console.log('📞 Telefone extraído:', telefone);
+    
+    if (!telefone) {
+      console.error('❌ Telefone não encontrado no webhook Ticto');
+      console.error('Dados recebidos:', JSON.stringify(req.body, null, 2));
+      return res.status(400).json({ error: 'Telefone obrigatório' });
+    }
+    
+    // Verificar se o pagamento foi aprovado
+    if (status !== 'approved' && status !== 'paid') {
+      console.log(`⏳ Pagamento pendente ou rejeitado. Status: ${status}`);
+      return res.status(200).json({ 
+        status: 'received',
+        message: 'Aguardando confirmação do pagamento'
+      });
+    }
+    
+    // Ajustar número se necessário
+    let telefoneAjustado = telefone;
+    if (telefone.length === 12 && telefone.startsWith('5562')) {
+      telefoneAjustado = telefone.substr(0, 4) + '9' + telefone.substr(4);
+    }
+    
+    console.log(`💳 Pagamento APROVADO para: ${telefoneAjustado}`);
+    console.log(`💰 Valor: R$ ${valor}`);
+    
+    // Verificar se usuário já existe
+    let usuario = await buscarUsuario(telefoneAjustado);
+    
+    if (usuario) {
+      // Usuário já existe - atualizar status de pagamento
+      await supabase.from('usuarios')
+        .update({ 
+          status: 'pago',
+          email: email,
+          data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
+          data_pagamento: new Date(),
+          valor_pago: valor
+        })
+        .eq('telefone', telefoneAjustado);
+      
+      console.log('✅ Usuário existente atualizado para status PAGO');
+    } else {
+      // Usuário novo - criar no banco
+      await supabase.from('usuarios').insert({
+        telefone: telefoneAjustado,
+        email: email,
+        status: 'pago',
+        criado_em: new Date(),
+        data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
+        data_pagamento: new Date(),
+        valor_pago: valor
+      });
+      
+      console.log('✅ Novo usuário criado com status PAGO');
+    }
+    
+    // Enviar mensagem de boas-vindas usando a nova função
+    const mensagemBoasVindas = `🎉 *Olá! Eu sou o Luke Stories!*
+
+Seu assistente pessoal para criar textos e ideias que vão te ajudar a gravar conteúdos incríveis e fazer sua imagem pessoal e empresa crescerem! 🚀
+
+📋 *ANTES DE COMEÇAR:*
+Preciso de algumas informações importantes:
+
+🔹 *Como gostaria de ser chamado(a)?*
+🔹 *Qual sua profissão e especialidade?*
+🔹 *Que serviços você oferece?*
+🔹 *Tem empresa/negócio? Qual o nome?*
+
+📱 *COMO USAR O LUKE STORIES:*
+
+🏠 *Em casa:* "Preciso de um texto pra gravar aqui em casa agora, de forma animada e motivacional"
+
+🛍️ *No shopping:* "Estou no shopping comprando um relógio, quero uma ideia curta e espontânea"
+
+💡 *Para dicas:* "Quero gravar uma dica sobre [seu assunto]"
+
+✨ *Pode mandar por ÁUDIO ou TEXTO* - eu entendo tudo!
+
+Vamos começar? Me mande suas informações! 😊`;
+
+    const resultadoEnvio = await enviarMensagemZAPI(telefoneAjustado, mensagemBoasVindas);
+    
+    if (resultadoEnvio.sucesso) {
+      console.log('✅ Mensagem de boas-vindas enviada para:', telefoneAjustado);
+      
+      res.status(200).json({ 
+        status: 'success',
+        message: 'Usuário ativado e mensagem enviada'
+      });
+    } else {
+      console.error('❌ Falha ao enviar mensagem de boas-vindas');
+      
+      res.status(200).json({ 
+        status: 'user_activated_message_failed',
+        message: 'Usuário ativado mas falha no envio da mensagem',
+        erro_envio: resultadoEnvio.erro
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro no webhook Ticto:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Webhook Z-API - VERSÃO COM MEMÓRIA INTELIGENTE E ENVIO MELHORADO
+app.post('/webhook/zapi', async (req, res) => {
+  try {
+    console.log('🔔 === WEBHOOK Z-API RECEBIDO ===');
+    console.log('📱 Body:', JSON.stringify(req.body, null, 2));
+    
+    const webhook = req.body;
+    
+    // Z-API formato: verificar se é mensagem recebida
+    if (!webhook.fromMe && webhook.phone) {
+      let telefone = webhook.phone;
+      
+      console.log(`📞 Telefone original: ${telefone}`);
+      
+      // Ajustar número adicionando 9 se necessário
+      if (telefone.length === 12 && telefone.startsWith('5562')) {
+        telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
+        console.log(`📞 Telefone ajustado: ${telefone}`);
+      }
+      
+      let mensagem = '';
+      let resposta = '';
+      
+      // Verificar tipo de mídia recebida
+      if (webhook.image?.imageUrl) {
+        console.log('📸 IMAGEM RECEBIDA!');
+        console.log('📸 URL:', webhook.image.imageUrl);
+        
+        // PRIMEIRO: Buscar usuário
+        const usuario = await buscarUsuario(telefone);
+        
+        if (!usuario || usuario.status !== 'pago') {
+          resposta = `🔒 *Acesso restrito!*
+
+Para usar o Luke Stories, você precisa adquirir o acesso primeiro.
+
+💳 *Faça seu pagamento em:* 
+https://payment.ticto.app/O6D37000C
+
+Após o pagamento, você receberá acesso imediato! ✨`;
+
+          // Enviar resposta usando a nova função
+          const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
+          
+          if (resultadoEnvio.sucesso) {
+            console.log('✅ Resposta de acesso restrito enviada');
+          } else {
+            console.error('❌ Falha ao enviar resposta de acesso restrito');
+          }
+          
+          return res.status(200).json({ status: 'access_denied' });
+        }
+        
+        // Perguntar se quer criar legenda
+        resposta = `📸 **Foto recebida!**
+
+Você gostaria que eu criasse uma **legenda personalizada** para essa foto?
+
+💡 **Opções:**
+📝 *"Sim, crie uma legenda"* - para legenda automática
+🎯 *"Quero legenda sobre [assunto específico]"* - para foco personalizado
+❌ *"Não precisa"* - se não quer legenda
+
+Como ${usuario.profissao}, posso criar uma legenda perfeita para seu público! ✨
+
+O que prefere? 😊`;
+
+        // Salvar URL da imagem temporariamente no usuário
+        await supabase.from('usuarios')
+          .update({ 
+            imagem_pendente: webhook.image.imageUrl,
+            aguardando_confirmacao: true,
+            atualizado_em: new Date()
+          })
+          .eq('telefone', telefone);
+
+        // Enviar resposta usando a nova função
+        const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
+        
+        if (resultadoEnvio.sucesso) {
+          console.log('✅ Resposta sobre mídia não suportada enviada');
+        } else {
+          console.error('❌ Falha ao enviar resposta sobre mídia não suportada');
+        }
+        
+        return res.status(200).json({ status: 'media_not_supported' });
+      }
+      
+      // Verificar se é áudio ou texto
+      if (webhook.audio?.audioUrl) {
+        console.log('🎵 ÁUDIO RECEBIDO!');
+        console.log('🎵 URL:', webhook.audio.audioUrl);
+        console.log('🎵 Duração:', webhook.audio.seconds, 'segundos');
+        
+        // Processar áudio para texto
+        const textoTranscrito = await processarAudio(webhook.audio.audioUrl);
+        
+        if (textoTranscrito) {
+          mensagem = textoTranscrito;
+          console.log(`💬 Áudio transcrito: "${mensagem}"`);
+        } else {
+          mensagem = 'Não consegui entender o áudio. Pode digitar ou mandar outro áudio?';
+          console.log('❌ Falha na transcrição');
+        }
+      } else {
+        mensagem = webhook.text?.message || 'Mensagem sem texto';
+      }
+
+      console.log(`💬 Mensagem recebida: "${mensagem}"`);
+      
+      // SISTEMA DE CONVERSA POR ETAPAS
+      console.log('🧠 Verificando se usuário existe...');
+      resposta = await processarConversaEtapas(telefone, mensagem);
+      
+      console.log('✅ Resposta preparada, enviando...');
+      console.log('📤 Enviando resposta via Z-API...');
+      
+      // Enviar resposta usando a nova função melhorada
+      const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
+      
+      if (resultadoEnvio.sucesso) {
+        console.log('✅ SUCESSO! Mensagem enviada com sucesso');
+      } else {
+        console.error('❌ FALHA no envio da mensagem:', resultadoEnvio.erro);
+        
+        // Log detalhado do erro para debug
+        if (resultadoEnvio.status === 403) {
+          console.error('🚫 ERRO 403: Problema de autenticação Z-API');
+          console.error('💡 Verifique: ZAPI_CLIENT_TOKEN, instância conectada, assinatura ativa');
+        }
+      }
+    } else {
+      console.log('🚫 Mensagem ignorada (fromMe ou sem phone)');
+    }
+    
+    res.status(200).json({ status: 'processed' });
+  } catch (error) {
+    console.error('💥 Erro geral no webhook:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// NOVA ROTA - Health Check
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'online',
+    timestamp: new Date().toISOString(),
+    version: '15.0',
+    services: {
+      supabase: 'connected',
+      openai: 'connected',
+      zapi: validarConfigZAPI() ? 'configured' : 'not_configured'
+    }
+  });
+});
+
+// NOVA ROTA - Status detalhado
+app.get('/status', async (req, res) => {
+  try {
+    // Testar Supabase
+    const { data: supabaseTest } = await supabase
+      .from('usuarios')
+      .select('ou_ia')
+      .limit(1);
+    
+    // Testar OpenAI (sem fazer chamada real para economizar)
+    const openaiStatus = process.env.OPENAI_API_KEY ? 'configured' : 'not_configured';
+    
+    // Testar Z-API
+    const zapiStatus = validarConfigZAPI() ? 'configured' : 'not_configured';
+    
+    res.json({
+      status: 'operational',
+      timestamp: new Date().toISOString(),
+      version: '15.0',
+      services: {
+        supabase: supabaseTest ? 'connected' : 'error',
+        openai: openaiStatus,
+        zapi: zapiStatus
+      },
+      stats: {
+        total_usuarios: supabaseTest ? supabaseTest.length : 0
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor Luke Stories V15 rodando na porta ${PORT}`);
+  console.log('📱 Webhook Z-API: /webhook/zapi');
+  console.log('💰 Webhook Ticto: /webhook/ticto');
+  console.log('🔧 Health Check: /health');
+  console.log('📊 Status: /status');
+  console.log('🧪 Teste Z-API: /test-zapi');
+  console.log('✅ Supabase configurado!');
+  console.log('🤖 OpenAI configurado!');
+  
+  // Validar Z-API na inicialização
+  if (validarConfigZAPI()) {
+    console.log('📞 Z-API configurado!');
+  } else {
+    console.error('❌ Z-API NÃO configurado - verifique as variáveis de ambiente!');
+  }
+  
+  console.log('🎯 Sistema interativo ATIVO!');
+  console.log('🔥 BOT PRONTO PARA FUNCIONAR!');
+  console.log('');
+  console.log('🎉 === CORREÇÕES V15 IMPLEMENTADAS ===');
+  console.log('✅ Nome da tabela corrigido: preferências_do_usuário');
+  console.log('✅ Sistema de perguntas menos invasivo');
+  console.log('✅ Separação clara: TEXTO vs LEGENDA');
+  console.log('✅ Aprendizado individual funcionando');
+  console.log('✅ Envio Z-API com retry e validação');
+  console.log('=====================================');
+});ensagemZAPI(telefone, resposta);
+        
+        if (resultadoEnvio.sucesso) {
+          console.log('✅ Pergunta sobre legenda enviada');
+        } else {
+          console.error('❌ Falha ao enviar pergunta sobre legenda');
+        }
+        
+        return res.status(200).json({ status: 'image_confirmation_sent' });
+      }
+      
+      if (webhook.video || webhook.document || webhook.sticker) {
+        console.log('📸 Mídia não suportada recebida');
+        
+        // Resposta educada para mídias não suportadas
+        resposta = `Oi! 😊
+
+Infelizmente, não consigo processar vídeos ou documentos. 
+
+✅ **Posso ajudar com:**
+🗣️ Mensagens de texto
+🎤 Mensagens de áudio
+📸 **Fotos** (crio legendas personalizadas!)
+
+💬 *Mande sua solicitação por texto, áudio ou foto que eu crio conteúdo incrível para você!* ✨`;
+
+        // Enviar resposta usando a nova função
+        const resultadoEnvio = await enviarMconst express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
@@ -110,11 +966,11 @@ async function enviarMensagemZAPI(telefone, mensagem, tentativa = 1) {
   }
 }
 
-// SISTEMA DE APRENDIZADO - Buscar preferências do usuário
+// SISTEMA DE APRENDIZADO - Buscar preferências do usuário (NOME CORRIGIDO)
 async function buscarPreferenciasUsuario(telefone, usuarioId) {
   try {
     const { data: preferencias, error } = await supabase
-      .from('preferencias_do_usuario')
+      .from('preferências_do_usuário')
       .select('*')
       .eq('telefone', telefone)
       .single();
@@ -219,7 +1075,7 @@ async function analisarHistoricoUsuario(telefone, usuarioId) {
   }
 }
 
-// SISTEMA DE APRENDIZADO - Salvar/atualizar preferências
+// SISTEMA DE APRENDIZADO - Salvar/atualizar preferências (NOME CORRIGIDO)
 async function salvarPreferenciasUsuario(telefone, usuarioId, preferencias) {
   try {
     console.log('💾 Salvando preferências do usuário...');
@@ -230,7 +1086,7 @@ async function salvarPreferenciasUsuario(telefone, usuarioId, preferencias) {
     if (preferenciasExistentes) {
       // Atualizar existente
       const { data, error } = await supabase
-        .from('preferencias_do_usuario')
+        .from('preferências_do_usuário')
         .update({
           ...preferencias,
           atualizado_em: new Date(),
@@ -245,7 +1101,7 @@ async function salvarPreferenciasUsuario(telefone, usuarioId, preferencias) {
     } else {
       // Criar novo
       const { data, error } = await supabase
-        .from('preferencias_do_usuario')
+        .from('preferências_do_usuário')
         .insert({
           telefone: telefone,
           id_do_usuario: usuarioId,
@@ -670,7 +1526,7 @@ async function processarConfirmacaoMudanca(telefone, mensagem, usuario) {
     
     // RESETAR PREFERÊNCIAS APRENDIDAS (nova profissão = novos padrões)
     console.log('🔄 Resetando preferências aprendidas...');
-    await supabase.from('preferencias_do_usuario')
+    await supabase.from('preferências_do_usuário')
       .delete()
       .eq('telefone', telefone);
     
@@ -775,92 +1631,58 @@ function analisarSeEhAjusteLegenda(mensagem, usuario) {
   return 'ajuste_legenda';
 }
 
-// SISTEMA INTELIGENTE - Analisar solicitação e decidir se precisa de perguntas
+// SISTEMA INTELIGENTE MELHORADO - Analisar solicitação (MENOS PERGUNTAS)
 function analisarSolicitacao(solicitacao, usuario) {
   console.log('🧠 Analisando solicitação:', solicitacao);
   
   const texto = solicitacao.toLowerCase();
   
-  // Detectar se a solicitação é muito genérica (precisa de perguntas)
-  const palavrasGenericas = [
-    'texto', 'ideia', 'algo', 'story', 'stories', 'conteudo', 'conteúdo',
-    'gravar', 'falar', 'postar', 'publicar', 'manhã', 'tarde', 'noite',
-    'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo',
-    'hoje', 'agora', 'criativo', 'legal', 'bacana', 'curta', 'rápida',
-    'rapidinho', 'simples', 'manda'
-  ];
+  // CRITÉRIO MAIS RESTRITIVO - só fazer perguntas se REALMENTE muito vago
+  const muitoVago = (
+    (texto === 'texto' || texto === 'ideia' || texto === 'algo' || 
+     texto === 'story' || texto === 'stories' || texto === 'conteudo' || 
+     texto === 'conteúdo' || texto === 'manda') && 
+    texto.length < 20
+  );
   
-  const temGenerico = palavrasGenericas.some(palavra => texto.includes(palavra));
+  console.log(`📊 Análise: muito_vago=${muitoVago}, tamanho=${texto.length}`);
   
-  // Detectar se já tem contexto específico
-  const temContextoEspecifico = 
-    texto.includes('animado') || texto.includes('sério') || texto.includes('motivacional') ||
-    texto.includes('call to action') || texto.includes('chamada') ||
-    texto.includes('dica') || texto.includes('tutorial') ||
-    texto.includes('promocional') || texto.includes('desconto') ||
-    texto.length > 100; // Textos longos geralmente têm mais contexto
-  
-  console.log(`📊 Análise: genérico=${temGenerico}, específico=${temContextoEspecifico}`);
-  
-  // Decidir se precisa de perguntas
-  if (temGenerico && !temContextoEspecifico) {
+  // SÓ fazer perguntas se for EXTREMAMENTE vago
+  if (muitoVago) {
     return {
       precisaPerguntas: true,
-      tipo: 'generico'
+      tipo: 'muito_vago'
     };
   }
   
+  // Para tudo o resto, gerar texto direto
   return {
     precisaPerguntas: false,
-    tipo: 'completo'
+    tipo: 'gerar_direto'
   };
 }
 
-// SISTEMA DE PERGUNTAS INTELIGENTES - VERSÃO MELHORADA
+// SISTEMA DE PERGUNTAS SIMPLIFICADO (MENOS INVASIVO)
 function gerarPerguntasRefinamento(usuario, solicitacao) {
-  console.log('❓ Gerando perguntas de refinamento...');
+  console.log('❓ Gerando perguntas de refinamento simplificadas...');
   
   const profissao = usuario.profissao.toLowerCase();
   
-  // Verificar se é solicitação após algumas horas (perguntas extras)
-  const agora = new Date();
-  const ultimaInteracao = usuario.atualizado_em ? new Date(usuario.atualizado_em) : new Date();
-  const horasDesdeUltimaInteracao = (agora - ultimaInteracao) / (1000 * 60 * 60);
-  
-  if (horasDesdeUltimaInteracao >= 2) {
-    // Perguntas mais detalhadas após algumas horas
-    return `Ótima ideia, ${usuario.nome}! 🎯
+  // Perguntas mais diretas e menos cansativas
+  return `Oi ${usuario.nome}! 😊
 
-Para criar o texto perfeito para você, me ajuda com algumas informações:
+Para criar o texto perfeito, me ajuda com uma informação rápida:
 
-🎭 **Tom do texto:** Você quer algo mais animado, motivacional, sério ou descontraído?
+🎭 **Que tipo de texto você quer?**
+📝 Animado e motivacional
+🛍️ Promocional dos seus serviços  
+💡 Dica profissional sobre ${usuario.especialidade}
+🏠 Algo casual e descontraído
 
-📍 **Local:** Vai gravar em casa, no ${getProfessionalLocation(profissao)} ou em outro lugar?
-
-👥 **Seus seguidores:** Como costuma chamá-los? (Ex: pessoal, galera, amigos, família, ${getProfessionalAudience(profissao)}) Ou prefere não usar um termo específico?
-
-🎯 **Foco:** Quer destacar algum ${getServiceType(profissao)} específico ou algo mais geral sobre ${usuario.especialidade}?
-
-⏰ **Horário:** É para gravar agora ou em outro momento do dia?
-
-💬 *Pode responder tudo junto ou uma por vez!* 😊`;
-  }
-  
-  // Perguntas básicas para primeira vez ou interações recentes
-  return `Ótima ideia, ${usuario.nome}! 🎯
-
-Para criar o texto perfeito para você, me ajuda com algumas informações:
-
-🎭 **Tom do texto:** Você quer algo mais animado, motivacional, sério ou descontraído?
-
-📍 **Local:** Vai gravar em casa, no ${getProfessionalLocation(profissao)} ou em outro lugar?
-
-🎯 **Foco:** Quer destacar algum ${getServiceType(profissao)} específico ou algo mais geral sobre ${usuario.especialidade}?
-
-💬 *Pode responder tudo junto ou uma por vez!* 😊`;
+💬 *Pode escolher uma opção ou me falar do seu jeito!* ✨`;
 }
 
-// Funções auxiliares para personalização por profissão
+// Funções auxiliares para personalização por profissão (mantidas)
 function getProfessionalLocation(profissao) {
   const locais = {
     'barbeiro': 'barbearia',
@@ -912,15 +1734,15 @@ function getProfessionalAudience(profissao) {
   return audiencias[profissao] || 'clientes';
 }
 
-// FUNÇÃO PRINCIPAL - Gerar texto personalizado COM SISTEMA INTELIGENTE
+// FUNÇÃO PRINCIPAL MELHORADA - Gerar texto personalizado (MENOS PERGUNTAS)
 async function gerarTextoPersonalizado(usuario, solicitacao) {
   console.log(`🎯 Gerando texto para ${usuario.nome}: ${solicitacao}`);
   
-  // ANALISAR SE PRECISA DE PERGUNTAS DE REFINAMENTO
+  // ANALISAR SE PRECISA DE PERGUNTAS (CRITÉRIO MAIS RESTRITIVO)
   const analise = analisarSolicitacao(solicitacao, usuario);
   
   if (analise.precisaPerguntas) {
-    console.log('❓ Solicitação precisa de refinamento');
+    console.log('❓ Solicitação MUITO vaga - precisa de refinamento');
     
     // Salvar estado de "aguardando refinamento"
     await supabase.from('usuarios')
@@ -955,14 +1777,14 @@ async function gerarTextoPersonalizado(usuario, solicitacao) {
     return await criarTextoComIA(usuario, solicitacaoCompleta, true);
   }
   
-  // GERAR TEXTO DIRETO (já tem informações suficientes)
-  console.log('🚀 Gerando texto direto');
+  // GERAR TEXTO DIRETO (padrão para a maioria dos casos)
+  console.log('🚀 Gerando texto direto (sem perguntas)');
   return await criarTextoComIA(usuario, solicitacao, false);
 }
 
-// FUNÇÃO MANTIDA - Criar texto com IA + APRENDIZADO (TEXTO PARA GRAVAR)
+// FUNÇÃO CORRIGIDA - Criar texto com IA + APRENDIZADO (PARA GRAVAR)
 async function criarTextoComIA(usuario, solicitacao, foiRefinado = false) {
-  console.log('🧠 Criando texto com aprendizado individual...');
+  console.log('🧠 Criando TEXTO PARA GRAVAR com aprendizado individual...');
   
   // Buscar preferências do usuário
   const preferencias = await buscarPreferenciasUsuario(usuario.telefone, usuario.ou_ia);
@@ -1055,7 +1877,7 @@ Responda APENAS com o JSON válido.`;
       });
     }
     
-    // RETORNO ESPECÍFICO PARA TEXTO DE STORY
+    // RETORNO ESPECÍFICO PARA TEXTO DE STORY (CORRIGIDO)
     return `📱 **TEXTO PARA GRAVAR:**
 "${resultado.texto_para_gravar}"
 
@@ -1368,842 +2190,10 @@ Se não tiver, pode falar "não tenho empresa" 😊`;
 
 Agora tenho tudo que preciso:
 👤 **Nome:** ${usuario.nome}
-💼 **Profissão:** ${usuario.profissao}
-🎯 **Especialidade:** ${usuario.especialidade}
+💼 **Profissão:** ${dadosProfissionais.profissao}
+🎯 **Especialidade:** ${dadosProfissionais.especialidade}
 🏢 **Empresa:** ${empresa}
 
 🚀 *AGORA ESTAMOS PRONTOS!*
 
-💬 *Como usar:*
-📱 "Preciso de um texto animado para gravar em casa"
-🛍️ "Estou no consultório, quero uma dica sobre [assunto]"
-🎯 "Quero algo promocional para meus serviços"
-
-*Pode mandar por áudio!* 🎤
-
-✨ *Vamos começar? Me mande sua primeira solicitação!* ✨`;
-  }
-  
-  return "Algo deu errado, pode tentar novamente?";
-}
-
-// FUNÇÃO CORRIGIDA - Extrair nome sem confundir com profissão
-function extrairNome(mensagem) {
-  console.log('🔍 Extraindo nome de:', mensagem);
-  
-  // Se mensagem começa com padrões de profissão, NÃO extrair nome
-  const padroesProfissao = [
-    /^sou\s+[a-zA-ZÀ-ÿ]+/i,
-    /^trabalho\s+(como|com|de)/i,
-    /^atuo\s+(como|na|no)/i,
-    /^formado\s+em/i,
-    /especialista\s+em/i,
-    /^minha\s+profissão/i,
-    /^área\s+de/i
-  ];
-  
-  // Verificar se é profissão
-  const eProfissao = padroesProfissao.some(padrao => padrao.test(mensagem));
-  if (eProfissao) {
-    console.log('❌ Detectado como profissão, não extraindo nome');
-    return null;
-  }
-  
-  // Padrões para nomes (sua lógica original mantida)
-  const padroes = [
-    /(?:me chamo|meu nome é|sou |eu sou )\s*([A-Za-zÀ-ÿ\s]{2,30})$/i,
-    /^([A-Za-zÀ-ÿ\s]{2,30})$/i // Nome sozinho
-  ];
-  
-  for (const padrao of padroes) {
-    const match = mensagem.match(padrao);
-    if (match && !mensagem.toLowerCase().includes('profiss') && !mensagem.toLowerCase().includes('trabalho')) {
-      const nome = match[1].trim();
-      console.log('✅ Nome extraído:', nome);
-      return nome;
-    }
-  }
-  
-  console.log('❌ Nenhum nome encontrado');
-  return null;
-}
-
-// FUNÇÃO MELHORADA - Extrair profissão e especialidade universal
-function extrairProfissaoEspecialidade(mensagem) {
-  console.log('🔍 Extraindo profissão de:', mensagem);
-  
-  let profissao = mensagem;
-  let especialidade = null;
-  
-  // Remover prefixos comuns
-  profissao = profissao.replace(/^(sou |trabalho como |atuo como |me formei em |formado em |especialista em |área de )/i, '');
-  
-  // Buscar padrões de especialidade
-  const regexEspecialidade = /(.*?)(?:,|\s+)(?:especialista em|especialidade em|trabalho com|foco em|área de|focado em|focada em|especializado em|especializada em|que trabalha com)\s+(.+)/i;
-  const match = mensagem.match(regexEspecialidade);
-  
-  if (match) {
-    profissao = match[1].trim();
-    especialidade = match[2].trim();
-  } else {
-    // Se não tem especialidade clara, usar "Geral"
-    especialidade = 'Geral';
-  }
-  
-  console.log(`✅ Profissão: "${profissao}" | Especialidade: "${especialidade}"`);
-  
-  return {
-    profissao: profissao,
-    especialidade: especialidade
-  };
-}
-
-// FUNÇÃO ATUALIZADA - Processar imagem (APENAS LEGENDA)
-async function processarImagem(imageUrl, telefone, contextoAdicional = '') {
-  try {
-    console.log('📸 Baixando imagem:', imageUrl);
-    console.log('🕐 Início download:', new Date().toISOString());
-    
-    const imageResponse = await axios.get(imageUrl, {
-      responseType: 'arraybuffer',
-      timeout: 15000
-    });
-    
-    console.log('✅ Imagem baixada!');
-    console.log('📊 Tamanho do arquivo:', imageResponse.data.byteLength, 'bytes');
-    
-    // Converter para base64
-    const base64Image = Buffer.from(imageResponse.data).toString('base64');
-    const dataUrl = `data:image/jpeg;base64,${base64Image}`;
-    
-    console.log('🕐 Fim download:', new Date().toISOString());
-    console.log('✅ Imagem convertida para base64');
-    
-    // Buscar usuário para personalizar análise
-    const usuario = await buscarUsuario(telefone);
-    if (!usuario) {
-      return "❌ Erro ao processar imagem. Usuário não encontrado.";
-    }
-    
-    // Buscar preferências para personalizar legenda
-    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.ou_ia);
-    
-    console.log('📸 Enviando para GPT-4 Vision...');
-    console.log('🕐 Início Vision:', new Date().toISOString());
-    
-    const prompt = `Você é o Luke Stories, especialista em criar legendas para ${usuario.profissao}.
-
-DADOS DO USUÁRIO:
-- Nome: ${usuario.nome}
-- Profissão: ${usuario.profissao}
-- Especialidade: ${usuario.especialidade}
-- Empresa: ${usuario.empresa || 'Profissional autônomo'}
-
-${preferencias ? `PREFERÊNCIAS APRENDIDAS:
-- Tom preferido: ${preferencias.tom_preferido || 'equilibrado'}
-- Tamanho: ${preferencias.tamanho_preferido || 'médio'}
-- Call-to-action: ${preferencias.call_to_action || 'sutil'}
-- Forma de chamar seguidores: ${preferencias.forma_chamar_seguidores || 'pessoal'}` : ''}
-
-${contextoAdicional ? `CONTEXTO ESPECÍFICO SOLICITADO: ${contextoAdicional}` : ''}
-
-INSTRUÇÕES PARA LEGENDA:
-1. Analise a imagem profissionalmente no contexto de ${usuario.profissao}
-2. Crie uma legenda criativa e envolvente
-3. Use o tom ${preferencias?.tom_preferido || 'profissional mas acessível'}
-4. Tamanho ${preferencias?.tamanho_preferido || 'médio'} (80-120 palavras)
-5. Inclua call-to-action ${preferencias?.call_to_action || 'sutil'}
-6. Seja específico para a área de ${usuario.especialidade}
-7. Use linguagem natural e envolvente
-
-IMPORTANTE: Retorne APENAS a legenda pronta para postar, sem explicações extras.
-
-Responda APENAS com a legenda, sem JSON ou formatação especial.`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: prompt
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: dataUrl
-              }
-            }
-          ]
-        }
-      ],
-      max_tokens: 300
-    });
-
-    console.log('🕐 Fim Vision:', new Date().toISOString());
-    console.log('✅ Análise da imagem concluída');
-
-    const legenda = completion.choices[0].message.content.trim();
-    
-    // Salvar interação no histórico
-    await supabase.from('conversas').insert({
-      telefone: usuario.telefone,
-      id_do_usuario: usuario.ou_ia,
-      mensagem_usuario: '[IMAGEM ANALISADA]',
-      resposta_bot: JSON.stringify({ legenda_para_postar: legenda }),
-      tipo_mensagem: 'legenda_imagem',
-      criado_em: new Date()
-    });
-    
-    // Atualizar preferências se existir
-    if (preferencias) {
-      await salvarPreferenciasUsuario(telefone, usuario.ou_ia, {
-        ...preferencias,
-        ultima_interacao: new Date()
-      });
-    }
-    
-    // ATIVAR MODO LEGENDA após gerar legenda
-    await supabase.from('usuarios')
-      .update({ 
-        modo_legenda_ativo: true,
-        ultima_legenda_gerada: legenda,
-        legenda_do_carinho: new Date(),
-        atualizado_em: new Date()
-      })
-      .eq('telefone', telefone);
-    
-    console.log('✅ Modo legenda ativado para ajustes futuros');
-    
-    // RETORNO ESPECÍFICO PARA LEGENDA - MAIS LIMPO
-    return `📸 **LEGENDA PARA ESSA IMAGEM:**
-
-"${legenda}"
-
----
-📋 *Para copiar:* Mantenha pressionado o texto acima
-
-✨ *Precisa de ajustes na legenda? Só me falar!* ✨`;
-
-  } catch (error) {
-    console.log('🕐 Erro em:', new Date().toISOString());
-    console.error('❌ Erro detalhado:', {
-      message: error.message,
-      code: error.code,
-      status: error.status
-    });
-    
-    return `❌ Ops! Tive um problema ao analisar sua imagem.
-
-💡 **Pode tentar:**
-🔄 Enviar a imagem novamente
-📝 Ou me contar o que tem na foto que eu crio uma legenda
-
-✨ *Estou aqui para ajudar!* ✨`;
-  }
-}
-
-// NOVA FUNÇÃO - Processar ajuste de legenda
-async function processarAjusteLegenda(usuario, contextoAjuste, telefone) {
-  try {
-    console.log('🔄 Processando ajuste de legenda...');
-    
-    // Buscar preferências para personalizar ajuste
-    const preferencias = await buscarPreferenciasUsuario(telefone, usuario.ou_ia);
-    
-    const prompt = `Você é o Luke Stories, especialista em ajustar legendas para ${usuario.profissao}.
-
-DADOS DO USUÁRIO:
-- Nome: ${usuario.nome}
-- Profissão: ${usuario.profissao}
-- Especialidade: ${usuario.especialidade}
-- Empresa: ${usuario.empresa || 'Profissional autônomo'}
-
-${preferencias ? `PREFERÊNCIAS APRENDIDAS:
-- Tom preferido: ${preferencias.tom_preferido || 'equilibrado'}
-- Tamanho: ${preferencias.tamanho_preferido || 'médio'}
-- Call-to-action: ${preferencias.call_to_action || 'sutil'}
-- Forma de chamar seguidores: ${preferencias.forma_chamar_seguidores || 'pessoal'}` : ''}
-
-CONTEXTO DO AJUSTE:
-${contextoAjuste}
-
-INSTRUÇÕES PARA AJUSTE:
-1. Analise a legenda anterior e a solicitação de ajuste
-2. Faça EXATAMENTE o que o usuário pediu (diminuir, aumentar, mudar tom, etc.)
-3. Mantenha a essência da legenda original
-4. Use as preferências do usuário como base
-5. Seja específico para a área de ${usuario.especialidade}
-6. Use linguagem natural e envolvente
-
-IMPORTANTE: Retorne APENAS a legenda ajustada, sem explicações extras.
-
-Responda APENAS com a nova legenda ajustada, sem JSON ou formatação especial.`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 300
-    });
-
-    const legendaAjustada = completion.choices[0].message.content.trim();
-    
-    // Salvar interação no histórico
-    await supabase.from('conversas').insert({
-      telefone: usuario.telefone,
-      id_do_usuario: usuario.ou_ia,
-      mensagem_usuario: contextoAjuste,
-      resposta_bot: JSON.stringify({ legenda_ajustada: legendaAjustada }),
-      tipo_mensagem: 'ajuste_legenda',
-      criado_em: new Date()
-    });
-    
-    // Atualizar a última legenda gerada com a nova versão
-    await supabase.from('usuarios')
-      .update({ 
-        ultima_legenda_gerada: legendaAjustada,
-        legenda_do_carinho: new Date(),
-        atualizado_em: new Date()
-      })
-      .eq('telefone', telefone);
-    
-    // Atualizar preferências se existir
-    if (preferencias) {
-      await salvarPreferenciasUsuario(telefone, usuario.ou_ia, {
-        ...preferencias,
-        ultima_interacao: new Date()
-      });
-    }
-    
-    console.log('✅ Legenda ajustada com sucesso');
-    
-    // RETORNO ESPECÍFICO PARA LEGENDA AJUSTADA
-    return `📸 **LEGENDA PARA ESSA IMAGEM:**
-
-"${legendaAjustada}"
-
----
-📋 *Para copiar:* Mantenha pressionado o texto acima
-
-✨ *Precisa de mais ajustes? Só me falar!* ✨`;
-
-  } catch (error) {
-    console.error('❌ Erro ao ajustar legenda:', error);
-    
-    return `❌ Ops! Tive um problema ao ajustar sua legenda.
-
-💡 **Pode tentar:**
-🔄 Falar de outra forma o ajuste que quer
-📝 Ou me contar exatamente como quer a legenda
-
-✨ *Estou aqui para ajudar!* ✨`;
-  }
-}
-
-async function processarAudio(audioUrl) {
-  try {
-    console.log('🎵 Baixando áudio:', audioUrl);
-    console.log('🕐 Início download:', new Date().toISOString());
-    
-    const audioResponse = await axios.get(audioUrl, {
-      responseType: 'arraybuffer',
-      timeout: 10000
-    });
-    
-    console.log('✅ Áudio baixado!');
-    console.log('📊 Tamanho do arquivo:', audioResponse.data.byteLength, 'bytes');
-    console.log('🕐 Fim download:', new Date().toISOString());
-    
-    console.log('🎵 Enviando para OpenAI Whisper...');
-    console.log('🕐 Início Whisper:', new Date().toISOString());
-    
-    const fs = require('fs');
-    const path = require('path');
-    const tempPath = path.join('/tmp', `audio_${Date.now()}.ogg`);
-    
-    fs.writeFileSync(tempPath, Buffer.from(audioResponse.data));
-    console.log('📁 Arquivo salvo em:', tempPath);
-    
-    const audioStream = fs.createReadStream(tempPath);
-    
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioStream,
-      model: 'whisper-1',
-      language: 'pt'
-    });
-    
-    fs.unlinkSync(tempPath);
-    console.log('🗑️ Arquivo temporário removido');
-    
-    console.log('🕐 Fim Whisper:', new Date().toISOString());
-    console.log('✅ Texto transcrito:', transcription.text);
-    return transcription.text;
-  } catch (error) {
-    console.log('🕐 Erro em:', new Date().toISOString());
-    console.error('❌ Erro detalhado:', {
-      message: error.message,
-      code: error.code,
-      status: error.status
-    });
-    return null;
-  }
-}
-
-// Rota de teste
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'Luke Stories V14 API funcionando!',
-    status: 'online',
-    timestamp: new Date().toISOString(),
-    versao: '14.0',
-    sistema_interativo: 'ativo',
-    zapi_configurado: validarConfigZAPI()
-  });
-});
-
-// Teste simples do banco
-app.get('/test-simple', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('usuarios')
-      .select('id')
-      .limit(1);
-    
-    res.json({ 
-      message: 'Banco funcionando!',
-      conexao: error ? 'erro' : 'sucesso',
-      erro: error?.message || null
-    });
-  } catch (error) {
-    res.json({ 
-      message: 'Erro capturado',
-      erro: error.message 
-    });
-  }
-});
-
-// ROTA PARA TESTAR Z-API
-app.get('/test-zapi', async (req, res) => {
-  try {
-    console.log('🧪 Testando configurações Z-API...');
-    
-    if (!validarConfigZAPI()) {
-      return res.status(400).json({
-        erro: 'Configurações Z-API inválidas',
-        message: 'Verifique as variáveis de ambiente ZAPI_INSTANCE, ZAPI_TOKEN e ZAPI_CLIENT_TOKEN'
-      });
-    }
-    
-    const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}`;
-    
-    // Testar status da instância
-    const response = await axios.get(`${ZAPI_URL}/status`, {
-      headers: {
-        'Client-Token': process.env.ZAPI_CLIENT_TOKEN
-      },
-      timeout: 10000
-    });
-    
-    console.log('✅ Teste Z-API bem-sucedido:', response.data);
-    
-    res.json({
-      message: 'Z-API funcionando!',
-      status: response.data,
-      instance: process.env.ZAPI_INSTANCE.substring(0, 10) + '...',
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error('❌ Erro no teste Z-API:', error.response?.data || error.message);
-    
-    res.status(500).json({
-      erro: 'Falha no teste Z-API',
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data
-    });
-  }
-});
-
-// Webhook Ticto - INTEGRAÇÃO COM PAGAMENTO E SEGURANÇA
-app.post('/webhook/ticto', async (req, res) => {
-  try {
-    console.log('💰 Webhook Ticto recebido:', req.body);
-    
-    // VALIDAR TOKEN DE SEGURANÇA TICTO
-    const tokenRecebido = req.headers['x-ticto-token'] || req.body.token || req.headers.authorization;
-    const tokenEsperado = 'r8DC0BxIsRI2R22zaDcMheURjgzhKXhcRjpa74Lugt39ftl2vir5qtMLwN5zM286B4ApVfYNFHrPylcnSylY7JF9VLF2WJbOvwp4';
-    
-    if (!tokenRecebido || tokenRecebido !== tokenEsperado) {
-      console.error('❌ Token inválido ou não fornecido');
-      console.error('Token recebido:', tokenRecebido);
-      return res.status(401).json({ error: 'Token de autenticação inválido' });
-    }
-    
-    console.log('✅ Token Ticto validado com sucesso');
-    
-    const { email, nome, valor, status, customer, phone } = req.body;
-    
-    // Extrair telefone do formato da Ticto
-    let telefone = null;
-    
-    if (req.body.telefone) {
-      // Formato direto
-      telefone = req.body.telefone;
-    } else if (phone && phone.number) {
-      // Formato da Ticto: phone: { ddd: "999", ddi: "+55", number: "99568246" }
-      telefone = `55${phone.ddd}${phone.number}`;
-    } else if (customer && customer.phone) {
-      // Outro formato possível
-      telefone = customer.phone;
-    }
-    
-    console.log('📞 Telefone extraído:', telefone);
-    
-    if (!telefone) {
-      console.error('❌ Telefone não encontrado no webhook Ticto');
-      console.error('Dados recebidos:', JSON.stringify(req.body, null, 2));
-      return res.status(400).json({ error: 'Telefone obrigatório' });
-    }
-    
-    // Verificar se o pagamento foi aprovado
-    if (status !== 'approved' && status !== 'paid') {
-      console.log(`⏳ Pagamento pendente ou rejeitado. Status: ${status}`);
-      return res.status(200).json({ 
-        status: 'received',
-        message: 'Aguardando confirmação do pagamento'
-      });
-    }
-    
-    // Ajustar número se necessário
-    let telefoneAjustado = telefone;
-    if (telefone.length === 12 && telefone.startsWith('5562')) {
-      telefoneAjustado = telefone.substr(0, 4) + '9' + telefone.substr(4);
-    }
-    
-    console.log(`💳 Pagamento APROVADO para: ${telefoneAjustado}`);
-    console.log(`💰 Valor: R$ ${valor}`);
-    
-    // Verificar se usuário já existe
-    let usuario = await buscarUsuario(telefoneAjustado);
-    
-    if (usuario) {
-      // Usuário já existe - atualizar status de pagamento
-      await supabase.from('usuarios')
-        .update({ 
-          status: 'pago',
-          email: email,
-          data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
-          data_pagamento: new Date(),
-          valor_pago: valor
-        })
-        .eq('telefone', telefoneAjustado);
-      
-      console.log('✅ Usuário existente atualizado para status PAGO');
-    } else {
-      // Usuário novo - criar no banco
-      await supabase.from('usuarios').insert({
-        telefone: telefoneAjustado,
-        email: email,
-        status: 'pago',
-        criado_em: new Date(),
-        data_expiracao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
-        data_pagamento: new Date(),
-        valor_pago: valor
-      });
-      
-      console.log('✅ Novo usuário criado com status PAGO');
-    }
-    
-    // Enviar mensagem de boas-vindas usando a nova função
-    const mensagemBoasVindas = `🎉 *Olá! Eu sou o Luke Stories!*
-
-Seu assistente pessoal para criar textos e ideias que vão te ajudar a gravar conteúdos incríveis e fazer sua imagem pessoal e empresa crescerem! 🚀
-
-📋 *ANTES DE COMEÇAR:*
-Preciso de algumas informações importantes:
-
-🔹 *Como gostaria de ser chamado(a)?*
-🔹 *Qual sua profissão e especialidade?*
-🔹 *Que serviços você oferece?*
-🔹 *Tem empresa/negócio? Qual o nome?*
-
-📱 *COMO USAR O LUKE STORIES:*
-
-🏠 *Em casa:* "Preciso de um texto pra gravar aqui em casa agora, de forma animada e motivacional"
-
-🛍️ *No shopping:* "Estou no shopping comprando um relógio, quero uma ideia curta e espontânea"
-
-💡 *Para dicas:* "Quero gravar uma dica sobre [seu assunto]"
-
-✨ *Pode mandar por ÁUDIO ou TEXTO* - eu entendo tudo!
-
-Vamos começar? Me mande suas informações! 😊`;
-
-    const resultadoEnvio = await enviarMensagemZAPI(telefoneAjustado, mensagemBoasVindas);
-    
-    if (resultadoEnvio.sucesso) {
-      console.log('✅ Mensagem de boas-vindas enviada para:', telefoneAjustado);
-      
-      res.status(200).json({ 
-        status: 'success',
-        message: 'Usuário ativado e mensagem enviada'
-      });
-    } else {
-      console.error('❌ Falha ao enviar mensagem de boas-vindas');
-      
-      res.status(200).json({ 
-        status: 'user_activated_message_failed',
-        message: 'Usuário ativado mas falha no envio da mensagem',
-        erro_envio: resultadoEnvio.erro
-      });
-    }
-    
-  } catch (error) {
-    console.error('❌ Erro no webhook Ticto:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Webhook Z-API - VERSÃO COM MEMÓRIA INTELIGENTE E ENVIO MELHORADO
-app.post('/webhook/zapi', async (req, res) => {
-  try {
-    console.log('🔔 === WEBHOOK Z-API RECEBIDO ===');
-    console.log('📱 Body:', JSON.stringify(req.body, null, 2));
-    
-    const webhook = req.body;
-    
-    // Z-API formato: verificar se é mensagem recebida
-    if (!webhook.fromMe && webhook.phone) {
-      let telefone = webhook.phone;
-      
-      console.log(`📞 Telefone original: ${telefone}`);
-      
-      // Ajustar número adicionando 9 se necessário
-      if (telefone.length === 12 && telefone.startsWith('5562')) {
-        telefone = telefone.substr(0, 4) + '9' + telefone.substr(4);
-        console.log(`📞 Telefone ajustado: ${telefone}`);
-      }
-      
-      let mensagem = '';
-      let resposta = '';
-      
-      // Verificar tipo de mídia recebida
-      if (webhook.image?.imageUrl) {
-        console.log('📸 IMAGEM RECEBIDA!');
-        console.log('📸 URL:', webhook.image.imageUrl);
-        
-        // PRIMEIRO: Buscar usuário
-        const usuario = await buscarUsuario(telefone);
-        
-        if (!usuario || usuario.status !== 'pago') {
-          resposta = `🔒 *Acesso restrito!*
-
-Para usar o Luke Stories, você precisa adquirir o acesso primeiro.
-
-💳 *Faça seu pagamento em:* 
-https://payment.ticto.app/O6D37000C
-
-Após o pagamento, você receberá acesso imediato! ✨`;
-
-          // Enviar resposta usando a nova função
-          const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
-          
-          if (resultadoEnvio.sucesso) {
-            console.log('✅ Resposta de acesso restrito enviada');
-          } else {
-            console.error('❌ Falha ao enviar resposta de acesso restrito');
-          }
-          
-          return res.status(200).json({ status: 'access_denied' });
-        }
-        
-        // Perguntar se quer criar legenda
-        resposta = `📸 **Foto recebida!**
-
-Você gostaria que eu criasse uma **legenda personalizada** para essa foto?
-
-💡 **Opções:**
-📝 *"Sim, crie uma legenda"* - para legenda automática
-🎯 *"Quero legenda sobre [assunto específico]"* - para foco personalizado
-❌ *"Não precisa"* - se não quer legenda
-
-Como ${usuario.profissao}, posso criar uma legenda perfeita para seu público! ✨
-
-O que prefere? 😊`;
-
-        // Salvar URL da imagem temporariamente no usuário
-        await supabase.from('usuarios')
-          .update({ 
-            imagem_pendente: webhook.image.imageUrl,
-            aguardando_confirmacao: true,
-            atualizado_em: new Date()
-          })
-          .eq('telefone', telefone);
-
-        // Enviar resposta usando a nova função
-        const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
-        
-        if (resultadoEnvio.sucesso) {
-          console.log('✅ Pergunta sobre legenda enviada');
-        } else {
-          console.error('❌ Falha ao enviar pergunta sobre legenda');
-        }
-        
-        return res.status(200).json({ status: 'image_confirmation_sent' });
-      }
-      
-      if (webhook.video || webhook.document || webhook.sticker) {
-        console.log('📸 Mídia não suportada recebida');
-        
-        // Resposta educada para mídias não suportadas
-        resposta = `Oi! 😊
-
-Infelizmente, não consigo processar vídeos ou documentos. 
-
-✅ **Posso ajudar com:**
-🗣️ Mensagens de texto
-🎤 Mensagens de áudio
-📸 **Fotos** (crio legendas personalizadas!)
-
-💬 *Mande sua solicitação por texto, áudio ou foto que eu crio conteúdo incrível para você!* ✨`;
-
-        // Enviar resposta usando a nova função
-        const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
-        
-        if (resultadoEnvio.sucesso) {
-          console.log('✅ Resposta sobre mídia não suportada enviada');
-        } else {
-          console.error('❌ Falha ao enviar resposta sobre mídia não suportada');
-        }
-        
-        return res.status(200).json({ status: 'media_not_supported' });
-      }
-      
-      // Verificar se é áudio ou texto
-      if (webhook.audio?.audioUrl) {
-        console.log('🎵 ÁUDIO RECEBIDO!');
-        console.log('🎵 URL:', webhook.audio.audioUrl);
-        console.log('🎵 Duração:', webhook.audio.seconds, 'segundos');
-        
-        // Processar áudio para texto
-        const textoTranscrito = await processarAudio(webhook.audio.audioUrl);
-        
-        if (textoTranscrito) {
-          mensagem = textoTranscrito;
-          console.log(`💬 Áudio transcrito: "${mensagem}"`);
-        } else {
-          mensagem = 'Não consegui entender o áudio. Pode digitar ou mandar outro áudio?';
-          console.log('❌ Falha na transcrição');
-        }
-      } else {
-        mensagem = webhook.text?.message || 'Mensagem sem texto';
-      }
-
-      console.log(`💬 Mensagem recebida: "${mensagem}"`);
-      
-      // SISTEMA DE CONVERSA POR ETAPAS
-      console.log('🧠 Verificando se usuário existe...');
-      resposta = await processarConversaEtapas(telefone, mensagem);
-      
-      console.log('✅ Resposta preparada, enviando...');
-      console.log('📤 Enviando resposta via Z-API...');
-      
-      // Enviar resposta usando a nova função melhorada
-      const resultadoEnvio = await enviarMensagemZAPI(telefone, resposta);
-      
-      if (resultadoEnvio.sucesso) {
-        console.log('✅ SUCESSO! Mensagem enviada com sucesso');
-      } else {
-        console.error('❌ FALHA no envio da mensagem:', resultadoEnvio.erro);
-        
-        // Log detalhado do erro para debug
-        if (resultadoEnvio.status === 403) {
-          console.error('🚫 ERRO 403: Problema de autenticação Z-API');
-          console.error('💡 Verifique: ZAPI_CLIENT_TOKEN, instância conectada, assinatura ativa');
-        }
-      }
-    } else {
-      console.log('🚫 Mensagem ignorada (fromMe ou sem phone)');
-    }
-    
-    res.status(200).json({ status: 'processed' });
-  } catch (error) {
-    console.error('💥 Erro geral no webhook:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// NOVA ROTA - Health Check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'online',
-    timestamp: new Date().toISOString(),
-    version: '14.0',
-    services: {
-      supabase: 'connected',
-      openai: 'connected',
-      zapi: validarConfigZAPI() ? 'configured' : 'not_configured'
-    }
-  });
-});
-
-// NOVA ROTA - Status detalhado
-app.get('/status', async (req, res) => {
-  try {
-    // Testar Supabase
-    const { data: supabaseTest } = await supabase
-      .from('usuarios')
-      .select('ou_ia')
-      .limit(1);
-    
-    // Testar OpenAI (sem fazer chamada real para economizar)
-    const openaiStatus = process.env.OPENAI_API_KEY ? 'configured' : 'not_configured';
-    
-    // Testar Z-API
-    const zapiStatus = validarConfigZAPI() ? 'configured' : 'not_configured';
-    
-    res.json({
-      status: 'operational',
-      timestamp: new Date().toISOString(),
-      version: '14.0',
-      services: {
-        supabase: supabaseTest ? 'connected' : 'error',
-        openai: openaiStatus,
-        zapi: zapiStatus
-      },
-      stats: {
-        total_usuarios: supabaseTest ? supabaseTest.length : 0
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor Luke Stories V14 rodando na porta ${PORT}`);
-  console.log('📱 Webhook Z-API: /webhook/zapi');
-  console.log('💰 Webhook Ticto: /webhook/ticto');
-  console.log('🔧 Health Check: /health');
-  console.log('📊 Status: /status');
-  console.log('🧪 Teste Z-API: /test-zapi');
-  console.log('✅ Supabase configurado!');
-  console.log('🤖 OpenAI configurado!');
-  
-  // Validar Z-API na inicialização
-  if (validarConfigZAPI()) {
-    console.log('📞 Z-API configurado!');
-  } else {
-    console.error('❌ Z-API NÃO configurado - verifique as variáveis de ambiente!');
-  }
-  
-  console.log('🎯 Sistema interativo ATIVO!');
-  console.log('🔥 BOT PRONTO PARA FUNCIONAR!');
-});
+💬
